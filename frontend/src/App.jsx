@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
+import ElectionSummary from './pages/ElectionSummary';
 import RegionDetail from './pages/RegionDetail';
 import CandidatePanel from './components/CandidatePanel';
+import PolyMarketPage from './pages/PolyMarketPage';
 import AISummary from './components/AISummary';
 import { ELECTION_DATE } from './data/mock';
 
@@ -50,10 +52,12 @@ function Countdown() {
 }
 
 const TABS = [
-  { id: 'main',     label: '메인' },
-  { id: 'result',   label: '선거개표현황' },
-  { id: 'register', label: '선거등록현황' },
-  { id: 'ai',       label: 'AI 검색' },
+  { id: 'main',       label: '메인' },
+  { id: 'summary',    label: '선거요약' },
+  { id: 'result',     label: '선거개표현황' },
+  { id: 'register',   label: '선거등록현황' },
+  { id: 'polymarket', label: 'PolyMarket 정보' },
+  { id: 'ai',         label: 'AI 검색' },
 ];
 
 export default function App() {
@@ -97,10 +101,12 @@ export default function App() {
       </nav>
 
       <div className="tab-content">
-        {activeTab === 'main'     && <Dashboard     isLive={isLive} />}
-        {activeTab === 'result'   && <RegionDetail  isLive={isLive} />}
-        {activeTab === 'register' && <CandidatePanel />}
-        {activeTab === 'ai'       && <AISummary />}
+        {activeTab === 'main'       && <Dashboard      isLive={isLive} />}
+        {activeTab === 'summary'    && <ElectionSummary />}
+        {activeTab === 'result'     && <RegionDetail   isLive={isLive} />}
+        {activeTab === 'register'   && <CandidatePanel />}
+        {activeTab === 'polymarket' && <PolyMarketPage />}
+        {activeTab === 'ai'         && <AISummary />}
       </div>
     </>
   );

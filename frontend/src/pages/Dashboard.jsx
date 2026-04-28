@@ -71,10 +71,10 @@ export default function Dashboard({ isLive }) {
         <div className="section-label"><span className="section-number">1</span>전체 선거 데이터 요약</div>
         <div className="card-grid-4">
           {[
-            { label: '진행 중 선거',  value: '3',    sub: '광역단체장 1 · 기초단체장 2' },
-            { label: '총 후보자 수',  value: '148',  sub: '평균 나이 54.2세' },
-            { label: '여성 후보 비율', value: '24%', sub: '전회 대비', badge: '▲ +2%p' },
-            { label: '선거일까지',    value: 'D-36', sub: '2026년 6월 3일 수요일' },
+            { label: '총 선출직 수',   value: '4,450', sub: '광역·기초·의회·교육감 전체 합산' },
+            { label: '전체 후보 인원', value: '8,578', sub: '2026-04-28 선관위 등록 기준' },
+            { label: '여성 후보 비율', value: '24%',   sub: '전회 대비', badge: '▲ +2%p' },
+            { label: '후보 평균 연령', value: '54.2세', sub: '최연소 29세 · 최연장 83세' },
           ].map((s, i) => (
             <div className="stat-card" key={i}>
               <div className="stat-label">{s.label}</div>
