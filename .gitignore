@@ -1,0 +1,46 @@
+# ── 환경변수 (API 키 — 절대 올리면 안 됨)
+.env
+*.env
+.env.*
+!.env.example
+
+# ── Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# ── Node / React
+node_modules/
+dist/
+build/
+.next/
+*.local
+
+# ── 로그
+*.log
+logs/
+
+# ── DB
+*.sql.backup
+*.db
+*.sqlite3
+
+# ── Docker
+.dockerignore
+
+# ── IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
