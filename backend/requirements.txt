@@ -1,0 +1,26 @@
+# backend/requirements.txt
+ 
+# ── 웹 프레임워크
+fastapi
+uvicorn[standard]
+ 
+# ── DB
+sqlalchemy
+pymysql
+cryptography          # pymysql SSL 지원
+ 
+# ── 데이터 수집
+requests
+xmltodict             # 선관위 XML 파싱
+httpx
+trafilatura           
+ 
+# ── 스케줄러
+apscheduler
+ 
+# ── AI
+google-generativeai
+ 
+# ── 유틸
+python-dotenv
+pydantic
