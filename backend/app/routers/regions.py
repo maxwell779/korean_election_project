@@ -176,22 +176,5 @@ def get_region_detail(region: str, db: Session = Depends(get_db)):
         candidates  = candidates,
         markets     = market_out,
         latest_news = latest_news,
-        analysis    = None,
-    )
-
-    # ── 3. 최신 뉴스 5건
-    latest_news = (
-        db.query(NewsSentiment)
-        .filter(NewsSentiment.region == region)
-        .order_by(NewsSentiment.pub_date.desc())
-        .limit(5)
-        .all()
-    )
-
-    return RegionDetailOut(
-        region      = region,
-        candidates  = candidates,
-        markets     = market_out,
-        latest_news = latest_news,
-        analysis    = None,   # analysis 엔드포인트에서 별도 호출
+        analysis    = None, # 프론트엔드에서 /analysis 엔드포인트로 별도 호출하도록 유지
     )

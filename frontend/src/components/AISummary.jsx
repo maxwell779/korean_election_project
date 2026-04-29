@@ -20,13 +20,9 @@ export default function AISummary() {
       text = known;
     } else {
       try {
-        const res = await fetch('/api/analysis/ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question }),
-        });
+        const res = await fetch(`/api/chatbot?query=${encodeURIComponent('[' + question + ']')}`);
         const data = await res.json();
-        text = data.answer ?? '답변을 가져오지 못했습니다.';
+        text = data.message + '\n' + data.events.map(e => e.one_line).join('\n');
       } catch {
         text = '현재 AI 서비스에 일시적 오류가 있습니다. 잠시 후 다시 시도해주세요.';
       }

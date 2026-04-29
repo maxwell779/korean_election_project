@@ -11,6 +11,19 @@ from app.schemas import CandidateOut
 
 router = APIRouter()
 
+# [추가] 프론트엔드 지역명과 DB(선관위) 지역명 매칭용 딕셔너리
+REGION_TO_SD = {
+    "서울": "서울특별시",
+    "부산": "부산광역시",
+    "경기": "경기도",
+    "충북": "충청북도",
+    "충남": "충청남도",
+    "강원": "강원특별자치도",
+    "전남광주": "전라남도",
+    "대전": "대전광역시",
+    "대구": "대구광역시",
+}
+
 
 @router.get(
     "/candidates/{region}",
@@ -40,11 +53,15 @@ def get_candidates(
 ):
     """
     사용 예시:
-        /api/candidates/서울특별시
-        /api/candidates/서울특별시?sg_type_label=광역단체장
-        /api/candidates/서울특별시?candidate_type=후보자&party=더불어민주당
+        /api/candidates/서울
+        /api/candidates/서울?sg_type_label=광역단체장
+        /api/candidates/서울?candidate_type=후보자&party=더불어민주당
     """
-    query = db.query(Candidate).filter(Candidate.sd_name == region)
+    # 1. 프론트엔드 지역명(서울)을 DB 지역명(서울특별시)으로 변환
+    full_region_name = REGION_TO_SD.get(region, region)
+
+    # 2. sd_name 필드를 사용하여 지역 검색
+    query = db.query(Candidate).filter(Candidate.sd_name == full_region_name)
 
     if candidate_type:
         query = query.filter(Candidate.candidate_type == candidate_type)
@@ -74,21 +91,18 @@ def get_candidates(
     summary="후보자 1인 상세 조회",
 )
 def get_candidate_detail(
-    region: str,
-    name:   str,
-    db: Session = Depends(get_db),
+    region: str, 
+    name: str, 
+    db: Session = Depends(get_db)
 ):
-    """후보자 이름으로 1인 상세 정보 조회"""
-    candidate = (
-        db.query(Candidate)
-        .filter(
-            Candidate.sd_name == region,
-            Candidate.name    == name,
-        )
-        .first()
-    )
-
-    if not candidate:
-        raise HTTPException(status_code=404, detail="후보자를 찾을 수 없습니다.")
-
-    return candidate
+    # 여기도 동일하게 지역명 변환 적용
+    full_region_name = REGION_TO_SD.get(region, region)
+    
+    result = db.query(Candidate).filter(
+        Candidate.sd_name == full_region_name,
+        Candidate.name == name
+    ).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="해당 후보자를 찾을 수 없습니다.")
+    return result

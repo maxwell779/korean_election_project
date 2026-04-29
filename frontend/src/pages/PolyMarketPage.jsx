@@ -1,45 +1,20 @@
-// PolyMarket 정보 탭 — 이번 선거 관련 베팅 정보 (정보 제공 전용, 베팅 기능 없음)
+import { useState, useEffect } from 'react';
+// ✅ [추가] API 함수 import
+import { getDashboardSummary } from '../api/index';
 
-const ALL_BETS = [
-  // ── 전국 통계 ──────────────────────────────────────────────────────────────
-  { cat: '전국 통계', title: '민주당 광역단체장 과반(9석 이상) 달성', pct: 68, change: +5, vol: '$2.4M', dir: 'up' },
-  { cat: '전국 통계', title: '전국 최종 투표율 60% 초과', pct: 81, change: +3, vol: '$1.8M', dir: 'up' },
-  { cat: '전국 통계', title: '국민의힘 수도권 1석 이상 확보', pct: 41, change: -6, vol: '$1.2M', dir: 'down' },
-  { cat: '전국 통계', title: '제3지대 정당 광역단체장 1석 이상 당선', pct: 18, change: +2, vol: '$0.8M', dir: 'up' },
-  { cat: '전국 통계', title: '무소속 후보 광역단체장 1명 이상 당선', pct: 34, change: 0,  vol: '$0.5M', dir: 'flat' },
+// ✅ [변경 전] 모든 데이터 하드코딩
+// const ALL_BETS = [ { cat: '전국 통계', title: '민주당 광역단체장 과반...' ... } ]
 
-  // ── 수도권 ─────────────────────────────────────────────────────────────────
-  { cat: '수도권',    title: '서울 민주당 후보 당선', pct: 62, change: +4, vol: '$3.1M', dir: 'up' },
-  { cat: '수도권',    title: '경기 민주당 후보 당선', pct: 71, change: +7, vol: '$2.8M', dir: 'up' },
-  { cat: '수도권',    title: '인천 민주당 후보 당선', pct: 55, change: -2, vol: '$1.1M', dir: 'down' },
+// ✅ [변경 후] 폴리마켓 지원 지역 목록 (markets API에 데이터 있는 지역)
+const SUPPORTED_REGIONS = ['서울', '부산', '경기', '충북', '충남', '강원', '전남광주', '대전', '대구'];
 
-  // ── 영남권 ─────────────────────────────────────────────────────────────────
-  { cat: '영남권',    title: '부산 국민의힘 후보 당선',      pct: 58, change: -3, vol: '$1.5M', dir: 'down' },
-  { cat: '영남권',    title: '대구 국민의힘 후보 당선',      pct: 76, change: +2, vol: '$0.9M', dir: 'up' },
-  { cat: '영남권',    title: '경남 국민의힘 후보 당선',      pct: 64, change: 0,  vol: '$0.7M', dir: 'flat' },
-  { cat: '영남권',    title: '경북 국민의힘 후보 당선',      pct: 79, change: +1, vol: '$0.6M', dir: 'up' },
-  { cat: '영남권',    title: '울산 조국혁신당 후보 당선',    pct: 31, change: +8, vol: '$0.4M', dir: 'up' },
-
-  // ── 호남권 ─────────────────────────────────────────────────────────────────
-  { cat: '호남권',    title: '광주·전남 민주당 계열 후보 당선', pct: 85, change: +2, vol: '$0.8M', dir: 'up' },
-  { cat: '호남권',    title: '전북 민주당 후보 당선',            pct: 88, change: +1, vol: '$0.6M', dir: 'up' },
-
-  // ── 충청·강원·제주 ─────────────────────────────────────────────────────────
-  { cat: '충청·강원·제주', title: '세종 민주당 후보 당선',       pct: 67, change: +5, vol: '$0.5M', dir: 'up' },
-  { cat: '충청·강원·제주', title: '충북 민주당 후보 당선',       pct: 61, change: +3, vol: '$0.4M', dir: 'up' },
-  { cat: '충청·강원·제주', title: '충남 민주당 후보 당선',       pct: 58, change: +2, vol: '$0.4M', dir: 'up' },
-  { cat: '충청·강원·제주', title: '강원 국민의힘 후보 당선',     pct: 54, change: -4, vol: '$0.5M', dir: 'down' },
-  { cat: '충청·강원·제주', title: '대전 민주당 후보 당선',       pct: 72, change: +6, vol: '$0.4M', dir: 'up' },
-  { cat: '충청·강원·제주', title: '제주 결과 5%p 이내 접전',    pct: 45, change: +6, vol: '$0.3M', dir: 'up' },
-];
-
-const CAT_ORDER = ['전국 통계', '수도권', '영남권', '호남권', '충청·강원·제주'];
 const CAT_COLOR = {
-  '전국 통계': '#0D1B3E', '수도권': '#1A5DC8', '영남권': '#E03030',
-  '호남권': '#1A8C60', '충청·강원·제주': '#D06010',
+  '서울': '#0D1B3E', '부산': '#E03030', '경기': '#1A5DC8',
+  '대구': '#8B0000', '대전': '#1A8C60', '전남광주': '#D06010',
+  '충북': '#5A70D0', '충남': '#7A40B0', '강원': '#2A7A5A',
 };
 
-function PctBar({ pct, dir }) {
+function PctBar({ pct }) {
   const color = pct >= 60 ? '#1A9C4E' : pct >= 40 ? '#D06010' : '#E03030';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 140 }}>
@@ -51,21 +26,48 @@ function PctBar({ pct, dir }) {
   );
 }
 
-function ChangeTag({ change, dir }) {
-  if (dir === 'flat') return <span style={{ fontSize: 12, color: '#AAA' }}>— 변동없음</span>;
-  const color = dir === 'up' ? '#1A9C4E' : '#E03030';
-  const arrow = dir === 'up' ? '▲' : '▼';
-  return <span style={{ fontSize: 12, fontWeight: 600, color }}>{arrow} {Math.abs(change)}%p</span>;
+function ChangeTag({ change }) {
+  if (change == null || change === 0) return <span style={{ fontSize: 12, color: '#AAA' }}>— 변동없음</span>;
+  const pct   = (change * 100).toFixed(1);
+  const color = change > 0 ? '#1A9C4E' : '#E03030';
+  const arrow = change > 0 ? '▲' : '▼';
+  return <span style={{ fontSize: 12, fontWeight: 600, color }}>{arrow} {Math.abs(pct)}%p</span>;
 }
 
 export default function PolyMarketPage() {
-  const totalVol = '$18.3M';
-  const totalBets = ALL_BETS.length;
+  // ✅ [추가] 실데이터 상태
+  const [regionData, setRegionData] = useState({}); // { '서울': MarketPriceOut[], ... }
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState(null);
 
-  const grouped = CAT_ORDER.map(cat => ({
-    cat,
-    items: ALL_BETS.filter(b => b.cat === cat),
-  }));
+  // ✅ [추가] 각 지역별 markets API 호출
+  useEffect(() => {
+    setLoading(true);
+    Promise.all(
+      SUPPORTED_REGIONS.map(region =>
+        fetch(`/api/markets/${encodeURIComponent(region)}`)
+          .then(res => res.ok ? res.json() : [])
+          .then(data => ({ region, data }))
+          .catch(() => ({ region, data: [] }))
+      )
+    )
+      .then(results => {
+        const map = {};
+        results.forEach(({ region, data }) => { map[region] = data; });
+        setRegionData(map);
+      })
+      .catch(() => setError('데이터를 불러오지 못했습니다.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ✅ [변경] 요약 통계 — 실데이터 기반
+  const allMarkets = Object.values(regionData).flat();
+  const totalBets  = allMarkets.length;
+  const avgPct     = totalBets > 0
+    ? Math.round(allMarkets.reduce((s, m) => s + m.probability_pct, 0) / totalBets)
+    : 0;
+  const highPct    = allMarkets.filter(m => m.probability_pct >= 60).length;
+  const lowPct     = allMarkets.filter(m => m.probability_pct < 40).length;
 
   return (
     <div>
@@ -73,21 +75,24 @@ export default function PolyMarketPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0D1B3E' }}>PolyMarket 선거 베팅 현황</div>
-          <div style={{ fontSize: 12, color: '#AAA', marginTop: 3 }}>2026 지방선거 관련 전체 예측 시장 · 정보 제공 전용</div>
+          <div style={{ fontSize: 12, color: '#AAA', marginTop: 3 }}>2026 지방선거 관련 예측 시장 · 정보 제공 전용</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, color: '#AAA', marginBottom: 3 }}>총 거래량</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: '#0D1B3E', letterSpacing: '-0.03em' }}>{totalVol}</div>
+          {/* ✅ [변경] 지원 지역 수 표시 */}
+          <div style={{ fontSize: 11, color: '#AAA', marginBottom: 3 }}>지원 지역</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: '#0D1B3E', letterSpacing: '-0.03em' }}>
+            {SUPPORTED_REGIONS.length}개
+          </div>
         </div>
       </div>
 
-      {/* 요약 카드 */}
+      {/* ✅ [변경] 요약 카드 — 실데이터 기반 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 28 }}>
         {[
-          { l: '전체 예측 시장',   v: totalBets,  unit: '개',  c: '#0D1B3E' },
-          { l: '평균 YES 확률',    v: Math.round(ALL_BETS.reduce((s,b) => s+b.pct, 0) / ALL_BETS.length), unit: '%', c: '#1A9C4E' },
-          { l: '상승 베팅',        v: ALL_BETS.filter(b => b.dir === 'up').length,   unit: '개', c: '#1A5DC8' },
-          { l: '하락 베팅',        v: ALL_BETS.filter(b => b.dir === 'down').length, unit: '개', c: '#E03030' },
+          { l: '전체 후보 수',    v: loading ? '—' : totalBets, unit: '명',  c: '#0D1B3E' },
+          { l: '평균 당선 확률',  v: loading ? '—' : avgPct,   unit: '%',   c: '#1A9C4E' },
+          { l: '확률 60% 이상',   v: loading ? '—' : highPct,  unit: '명',  c: '#1A5DC8' },
+          { l: '확률 40% 미만',   v: loading ? '—' : lowPct,   unit: '명',  c: '#E03030' },
         ].map((s, i) => (
           <div className="stat-card" key={i}>
             <div className="stat-label">{s.l}</div>
@@ -98,44 +103,57 @@ export default function PolyMarketPage() {
         ))}
       </div>
 
-      {/* 카테고리별 베팅 목록 */}
-      {grouped.map(({ cat, items }) => (
-        <div key={cat} style={{ marginBottom: 22 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ width: 4, height: 18, borderRadius: 2, background: CAT_COLOR[cat], flexShrink: 0 }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B3E' }}>{cat}</span>
-            <span style={{ fontSize: 11, color: '#AAA' }}>{items.length}개 시장</span>
-          </div>
-
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            {items.map((b, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 16, padding: '13px 18px',
-                borderBottom: i < items.length - 1 ? '1px solid #F0F2F5' : 'none',
-              }}>
-                {/* 제목 */}
-                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#1A1A1A', lineHeight: 1.4 }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: CAT_COLOR[cat], marginRight: 7, verticalAlign: 'middle' }} />
-                  {b.title}
-                </div>
-
-                {/* YES 확률 + 막대 */}
-                <PctBar pct={b.pct} dir={b.dir} />
-
-                {/* 변동 */}
-                <div style={{ minWidth: 72, textAlign: 'right' }}>
-                  <ChangeTag change={b.change} dir={b.dir} />
-                </div>
-
-                {/* 거래량 */}
-                <div style={{ minWidth: 56, textAlign: 'right', fontSize: 12, color: '#888', fontWeight: 600 }}>
-                  {b.vol}
-                </div>
-              </div>
-            ))}
-          </div>
+      {loading && (
+        <div style={{ textAlign: 'center', color: '#AAA', padding: 40, fontSize: 14 }}>
+          데이터 불러오는 중...
         </div>
-      ))}
+      )}
+      {error && (
+        <div style={{ padding: '12px 16px', background: '#FEF0F0', borderRadius: 8, color: '#E03030', fontSize: 13, marginBottom: 16 }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* ✅ [변경] 지역별 후보 목록 — API 실데이터 */}
+      {!loading && SUPPORTED_REGIONS.map(region => {
+        const markets = regionData[region] || [];
+        if (markets.length === 0) return null;
+        return (
+          <div key={region} style={{ marginBottom: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 4, height: 18, borderRadius: 2, background: CAT_COLOR[region] || '#888', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B3E' }}>{region}</span>
+              <span style={{ fontSize: 11, color: '#AAA' }}>{markets.length}명 후보</span>
+            </div>
+
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              {markets.map((m, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '13px 18px', borderBottom: i < markets.length - 1 ? '1px solid #F0F2F5' : 'none' }}>
+                  {/* ✅ candidate_ko(한글명) 표시 */}
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#1A1A1A', lineHeight: 1.4 }}>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: CAT_COLOR[region] || '#888', marginRight: 7, verticalAlign: 'middle' }} />
+                    {m.candidate_ko || m.candidate}
+                    <span style={{ fontSize: 11, color: '#AAA', fontWeight: 400, marginLeft: 6 }}>({m.candidate})</span>
+                  </div>
+
+                  {/* 확률 막대 */}
+                  <PctBar pct={m.probability_pct} />
+
+                  {/* 1일 변동 */}
+                  <div style={{ minWidth: 72, textAlign: 'right' }}>
+                    <ChangeTag change={m.price_change_1d} />
+                  </div>
+
+                  {/* 24h 거래량 */}
+                  <div style={{ minWidth: 72, textAlign: 'right', fontSize: 12, color: '#888', fontWeight: 600 }}>
+                    ${m.volume_24h?.toLocaleString('en', { maximumFractionDigits: 0 }) ?? 0}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       <div style={{ marginTop: 6, padding: '12px 16px', background: '#FFFBE8', borderRadius: 8, border: '1px solid #F5E080', fontSize: 12, color: '#8A6A00' }}>
         ⚠️ 본 페이지는 Polymarket.com 데이터를 기반으로 한 정보 제공 전용입니다. 투자 권유나 베팅 기능을 제공하지 않습니다.

@@ -88,6 +88,8 @@ class NewsSentiment(Base):
     url             = Column(Text)
     pub_date        = Column(DateTime)
     query_keyword   = Column(String(200))
+    # 👇 [추가된 부분] 기사 본문 저장용 컬럼
+    content         = Column(Text, nullable=True)
     sentiment       = Column(Enum("positive", "negative", "neutral"), nullable=True)
     sentiment_score = Column(Float,   nullable=True)
     summary_3line   = Column(Text,    nullable=True)

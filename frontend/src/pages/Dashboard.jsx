@@ -1,5 +1,10 @@
+import { useState, useEffect } from 'react';
 import KoreanMap from '../components/KoreanMap';
-import { NEWS, POLYMARKET } from '../data/mock';
+// ✅ [추가] API 함수 import — index.js에 이미 정의되어 있음
+import { getNews, getDashboardSummary } from '../api/index';
+
+// ✅ [변경 전] mock에서 NEWS, POLYMARKET import
+// import { NEWS, POLYMARKET } from '../data/mock';
 
 function VoteStats({ isLive }) {
   const parties = [
@@ -7,7 +12,6 @@ function VoteStats({ isLive }) {
     { name: '국민의힘', color: '#E03030', seats: isLive ? 86  : 0, total: 245 },
     { name: '기타',     color: '#B8C0CC', seats: isLive ? 7   : 0, total: 245 },
   ];
-
   return (
     <div className="card" style={{ padding: 0, marginBottom: 14 }}>
       <div className="vote-stats-row">
@@ -23,7 +27,6 @@ function VoteStats({ isLive }) {
             <div style={{ fontSize: 12, color: '#AAA', fontStyle: 'italic', paddingTop: 12 }}>투표가 실시되기 전입니다.</div>
           )}
         </div>
-
         <div className="vote-stat-block">
           <div style={{ fontSize: 11, color: '#888', marginBottom: 8, fontWeight: 500 }}>개표율</div>
           {isLive ? (
@@ -36,7 +39,6 @@ function VoteStats({ isLive }) {
             <div style={{ fontSize: 12, color: '#AAA', fontStyle: 'italic', paddingTop: 12 }}>개표가 실시되기 전입니다.</div>
           )}
         </div>
-
         <div className="vote-stat-block">
           <div style={{ fontSize: 11, color: '#888', marginBottom: 10, fontWeight: 500 }}>정당별 당선 현황</div>
           <div className="party-result-bar">
@@ -46,9 +48,7 @@ function VoteStats({ isLive }) {
                 <div key={p.name} className="party-bar-row">
                   <div className="party-dot" style={{ background: p.color }} />
                   <div className="party-name-sm">{p.name}</div>
-                  <div className="party-bar-track">
-                    <div className="party-bar-fill" style={{ width: `${pct}%`, background: p.color }} />
-                  </div>
+                  <div className="party-bar-track"><div className="party-bar-fill" style={{ width: `${pct}%`, background: p.color }} /></div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 72 }}>
                     <div className="party-pct" style={{ color: p.color }}>{pct}%</div>
                     <div style={{ fontSize: 10, color: '#BBB', whiteSpace: 'nowrap' }}>{p.seats}/{p.total}석</div>
@@ -64,6 +64,46 @@ function VoteStats({ isLive }) {
 }
 
 export default function Dashboard({ isLive }) {
+  // ✅ [추가] 실데이터 상태
+  const [news,        setNews]        = useState([]);
+  const [polymarket,  setPolymarket]  = useState([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [polyLoading, setPolyLoading] = useState(true);
+
+  // ✅ [추가] 뉴스 API 호출 (섹션 3) — 전국 공통 뉴스 최신 5건
+  useEffect(() => {
+    setNewsLoading(true);
+    getNews('전국')
+      .then(data => setNews(data.slice(0, 5)))
+      .catch(() => setNews([]))
+      .finally(() => setNewsLoading(false));
+  }, []);
+
+  // ✅ [추가] 폴리마켓 API 호출 (섹션 4) — dashboard/summary에서 확률 데이터 추출
+  useEffect(() => {
+    setPolyLoading(true);
+    getDashboardSummary()
+      .then(data => {
+        // 확률 높은 순으로 정렬, 상위 5개
+        const sorted = [...data]
+          .sort((a, b) => b.probability_pct - a.probability_pct)
+          .slice(0, 5);
+        setPolymarket(sorted);
+      })
+      .catch(() => setPolymarket([]))
+      .finally(() => setPolyLoading(false));
+  }, []);
+
+  // ✅ [변경] pub_date를 상대시간으로 변환하는 헬퍼
+  function timeAgo(pubDate) {
+    if (!pubDate) return '';
+    const diff = Date.now() - new Date(pubDate).getTime();
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return '방금 전';
+    if (hours < 24) return `${hours}시간 전`;
+    return `${Math.floor(hours / 24)}일 전`;
+  }
+
   return (
     <div>
       {/* 섹션 1: 요약 통계 */}
@@ -95,40 +135,66 @@ export default function Dashboard({ isLive }) {
 
       {/* 섹션 3+4: 뉴스 + 폴리마켓 */}
       <div className="two-col">
+
+        {/* ✅ [변경] 섹션 3 — mock NEWS → API 실데이터 */}
         <div>
           <div className="section-label"><span className="section-number">3</span>오늘의 주요 선거 뉴스 TOP 5</div>
           <div className="card">
-            {NEWS.map(n => (
-              <div className="news-item" key={n.rank}>
-                <div className={`news-rank ${n.rank <= 2 ? 'top' : ''}`}>{n.rank}</div>
-                <div style={{ flex: 1 }}>
-                  <div className="news-title">{n.title}</div>
-                  <div className="news-meta">{n.source} · {n.time}</div>
+            {newsLoading ? (
+              <div style={{ textAlign: 'center', color: '#AAA', padding: 24, fontSize: 13 }}>뉴스 불러오는 중...</div>
+            ) : news.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#AAA', padding: 24, fontSize: 13 }}>뉴스 데이터가 없습니다.</div>
+            ) : (
+              news.map((n, i) => (
+                <div className="news-item" key={i} onClick={() => n.url && window.open(n.url, '_blank')}>
+                  <div className={`news-rank ${i < 2 ? 'top' : ''}`}>{i + 1}</div>
+                  <div style={{ flex: 1 }}>
+                    <div className="news-title">{n.title}</div>
+                    {/* ✅ candidate(후보자명) + timeAgo(pub_date) 표시 */}
+                    <div className="news-meta">
+                      {n.candidate && `${n.candidate} · `}{timeAgo(n.pub_date)}
+                    </div>
+                  </div>
+                  <span style={{ color: '#CCC', fontSize: 14, alignSelf: 'center' }}>›</span>
                 </div>
-                <span style={{ color: '#CCC', fontSize: 14, alignSelf: 'center' }}>›</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
+        {/* ✅ [변경] 섹션 4 — mock POLYMARKET → getDashboardSummary 실데이터 */}
         <div>
-          <div className="section-label"><span className="section-number">4</span>Polymarket 배팅 Top 5</div>
+          <div className="section-label"><span className="section-number">4</span>Polymarket 당선 확률 Top 5</div>
           <div className="card">
-            {POLYMARKET.map((p, i) => (
-              <div className="poly-item" key={i}>
-                <div style={{ flex: 1 }}>
-                  <div className="poly-title">{p.title}</div>
-                  <div className="poly-volume">{p.volume}</div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                  <div className={`poly-pct ${p.pct >= 60 ? 'high' : p.pct >= 40 ? 'mid' : 'low'}`}>{p.pct}%</div>
-                  <div className={`poly-change ${p.dir}`}>
-                    {p.dir === 'up' ? '▲' : p.dir === 'down' ? '▼' : '—'}{' '}
-                    {p.change !== 0 ? `${Math.abs(p.change)}%` : '변동없음'}
+            {polyLoading ? (
+              <div style={{ textAlign: 'center', color: '#AAA', padding: 24, fontSize: 13 }}>데이터 불러오는 중...</div>
+            ) : polymarket.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#AAA', padding: 24, fontSize: 13 }}>폴리마켓 데이터가 없습니다.</div>
+            ) : (
+              polymarket.map((p, i) => (
+                <div className="poly-item" key={i}>
+                  <div style={{ flex: 1 }}>
+                    {/* ✅ top_candidate_ko(한글 후보명) + region 표시 */}
+                    <div className="poly-title">{p.region} {p.top_candidate_ko}</div>
+                    <div className="poly-volume">
+                      {p.top_party && <span style={{ fontSize: 11, color: '#888' }}>{p.top_party}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                    <div className={`poly-pct ${p.probability_pct >= 60 ? 'high' : p.probability_pct >= 40 ? 'mid' : 'low'}`}>
+                      {p.probability_pct}%
+                    </div>
+                    {/* ✅ price_change_1d 실데이터 */}
+                    {p.price_change_1d != null && (
+                      <div className={`poly-change ${p.price_change_1d > 0 ? 'up' : p.price_change_1d < 0 ? 'down' : 'flat'}`}>
+                        {p.price_change_1d > 0 ? '▲' : p.price_change_1d < 0 ? '▼' : '—'}{' '}
+                        {p.price_change_1d !== 0 ? `${Math.abs(p.price_change_1d * 100).toFixed(1)}%` : '변동없음'}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #F0F2F5', fontSize: 11, color: '#AAA', textAlign: 'right' }}>
               Polymarket.com 기반 · 투자 권유 아님
             </div>

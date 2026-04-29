@@ -1,14 +1,26 @@
 # backend/app/collectors/nec.py
+# 파일 최상단에 추가할 코드 (naver_news.py, nec.py, polymarket.py 공통)
+import sys
+import os
+
+# 1. backend 루트 폴더를 파이썬 경로(sys.path)에 강제 추가
+# (현재 파일 위치에서 두 단계 위인 'backend' 폴더를 가리킴)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(os.path.dirname(CURRENT_DIR))
+
+if BACKEND_DIR not in sys.path:
+    sys.path.append(BACKEND_DIR)
+
+# 2. .env 파일 절대 경로 지정
+from dotenv import load_dotenv
+env_path = os.path.join(BACKEND_DIR, ".env")
+load_dotenv(dotenv_path=env_path)
 
 import requests
 import xmltodict
 import urllib.parse
 import time
-import os
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
 
 API_KEY  = os.getenv("NEC_API_KEY")
 BASE_URL = "https://apis.data.go.kr/9760000"
@@ -267,9 +279,8 @@ def fetch_candidates() -> list[dict]:
 # ─────────────────────────────────────────────
 def fetch_nec_data() -> list[dict]:
     """
-    scheduler.py에서 호출하는 메인 함수.
+    scheduler.py 및 단독 실행 시 호출하는 메인 함수.
     현재 날짜 기준으로 예비후보자/후보자를 자동 판단해서 수집.
-
     후보자 등록 개시일: 2026-05-19 (잠정)
     """
     CANDIDATE_REG_START = "20260519"  # 후보자 등록 개시일
@@ -325,11 +336,34 @@ def save_candidates_to_db(candidates: list[dict]):
                 inserted += 1
 
         db.commit()
-        print(f"DB 저장 완료 — 신규: {inserted}명 / 업데이트: {updated}명")
+        print(f"\n[✅ 완료] DB 저장 완료 — 신규: {inserted}명 / 업데이트: {updated}명")
 
     except Exception as e:
         db.rollback()
-        print(f"[DB 오류] {e}")
+        print(f"\n[🚨 DB 오류] {e}")
         raise
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────
+# 직접 실행용 스위치 (터미널에서 실행할 때만 작동)
+# ─────────────────────────────────────────────
+if __name__ == "__main__":
+    print("===========================================")
+    print("🗳️ 선관위(NEC) 후보자 데이터 수집기 가동 시작")
+    print("===========================================")
+    
+    if not API_KEY:
+        print("🚨 [경고] .env 파일에 NEC_API_KEY 가 설정되어 있지 않습니다!")
+        sys.exit(1)
+        
+    # 1. 데이터 수집 (날짜 자동 판단 로직 사용)
+    candidates_data = fetch_nec_data()
+    
+    # 2. 데이터 저장
+    if candidates_data:
+        print(f"\n데이터베이스 저장을 시작합니다... (총 {len(candidates_data)}명)")
+        save_candidates_to_db(candidates_data)
+    else:
+        print("\n수집된 후보자 데이터가 없습니다. (API 응답 또는 기간을 확인해주세요)")
