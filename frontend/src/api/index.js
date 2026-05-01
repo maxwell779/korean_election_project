@@ -43,5 +43,4 @@ export const getPromiseMatch = (addr, sgType, keyword) => {
 export const getNewsSentimentChat = (candidateName) => {
   // 백엔드가 [이름] 형식을 요구하므로 프론트에서 알아서 감싸서 보냄
   const formattedQuery = `[${candidateName}]`;
-  return get(`/chatbot?query=${encodeURIComponent(formattedQuery)}&days=14&importance_threshold=2`);
-};
+  return get(`/chatbot?query=${encodeURIComponent(formattedQuery)}&days=14&importance_threshold=1`)};
