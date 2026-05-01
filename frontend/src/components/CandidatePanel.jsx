@@ -1,15 +1,10 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
-// ✅ [변경 전] mock 데이터 import
-// import { CANDIDATE_DATA } from '../data/mock';
-
-// ✅ [변경 후] API 함수 import
 import { getCandidates } from '../api/index';
 
-// ── 필터 옵션
 const ELECTION_TYPES = ['전체', '광역단체장', '광역의회의원', '교육감', '국회의원보궐', '기초단체장', '기초의회의원'];
 
-// ✅ [변경] 지역 목록 — 폴리마켓 지원 지역(API에 데이터 있음) + 전체
-const SUPPORTED_REGIONS = ['전체', '서울', '부산', '경기', '충북', '충남', '강원', '전남광주', '대전', '대구'];
+// ✅ [수정] 전국 17개 시도 모두 추가
+const ALL_REGIONS = ['전체', '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
 
 const PARTIES = ['전체', '더불어민주당', '국민의힘', '개혁신당', '조국혁신당', '정의당', '진보당', '소수정당', '무소속'];
 const MAJOR_PARTIES = new Set(['더불어민주당', '국민의힘', '개혁신당', '조국혁신당', '정의당', '진보당', '무소속']);
@@ -54,11 +49,10 @@ function FilterRow({ label, options, value, onChange, getStyle }) {
   );
 }
 
-// 요약 통계 (상단 카드) — 실데이터로 계산
 function SummaryCards({ candidates }) {
   const stats = useMemo(() => {
     const byParty = {};
-    candidates.forEach(c => { byParty[c.party] = (byParty[c.party] || 0) + 1; });
+    candidates.forEach(c => { byParty[c.party || '무소속'] = (byParty[c.party || '무소속'] || 0) + 1; });
     const blue = byParty['더불어민주당'] || 0;
     const red  = byParty['국민의힘'] || 0;
     const etc  = candidates.length - blue - red;
@@ -86,50 +80,86 @@ function SummaryCards({ candidates }) {
 
 export default function CandidatePanel() {
   const [search,         setSearch]         = useState('');
-  const [typeFilter,     setTypeFilter]     = useState('광역단체장'); // ✅ 기본값: 광역단체장
-  const [regionFilter,   setRegionFilter]   = useState('서울');       // ✅ 기본값: 서울
+  const [typeFilter,     setTypeFilter]     = useState('전체'); 
+  const [regionFilter,   setRegionFilter]   = useState('전체'); 
   const [partyFilter,    setPartyFilter]    = useState('전체');
   const [expandedKey,    setExpandedKey]    = useState(null);
+  
+  // ✅ [추가] 정렬 및 페이징 상태
+  const [sortBy,         setSortBy]         = useState('name'); // 'name' | 'age'
+  const [currentPage,    setCurrentPage]    = useState(1);
+  const itemsPerPage = 20;
 
-  // ✅ [추가] API 데이터 상태
   const [candidates, setCandidates] = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState(null);
 
-  // ✅ [추가] 지역 변경 시 API 호출
-  // regionFilter가 '전체'이면 서울 기본 조회
+  // ✅ [수정] 17개 지역 전체 호출 대응 로직
   useEffect(() => {
-    const region = regionFilter === '전체' ? '서울' : regionFilter;
     setLoading(true);
     setError(null);
     setExpandedKey(null);
+    setCurrentPage(1); // 필터 변경 시 1페이지로 리셋
 
-    // sg_type_label 파라미터: 광역단체장만 필터
     const sgType = typeFilter !== '전체' ? typeFilter : '';
-    const url = sgType
-      ? `/api/candidates/${encodeURIComponent(region)}?sg_type_label=${encodeURIComponent(sgType)}`
-      : `/api/candidates/${encodeURIComponent(region)}`;
+    
+    const fetchRegion = (region) => {
+      const url = sgType
+        ? `/api/candidates/${encodeURIComponent(region)}?sg_type_label=${encodeURIComponent(sgType)}`
+        : `/api/candidates/${encodeURIComponent(region)}`;
+      return fetch(url).then(res => res.json());
+    };
 
-    fetch(url)
-      .then(res => {
-        if (!res.ok) throw new Error(`${res.status}`);
-        return res.json();
-      })
-      .then(data => setCandidates(data))
-      .catch(err => { setError('데이터를 불러오지 못했습니다.'); setCandidates([]); })
-      .finally(() => setLoading(false));
+    if (regionFilter === '전체') {
+      // '전체' 선택 시 17개 지역 순회
+      const realRegions = ALL_REGIONS.filter(r => r !== '전체');
+      Promise.all(realRegions.map(fetchRegion))
+        .then(results => setCandidates(results.flat()))
+        .catch(err => { setError('데이터를 불러오지 못했습니다.'); setCandidates([]); })
+        .finally(() => setLoading(false));
+    } else {
+      fetchRegion(regionFilter)
+        .then(data => setCandidates(data))
+        .catch(err => { setError('데이터를 불러오지 못했습니다.'); setCandidates([]); })
+        .finally(() => setLoading(false));
+    }
   }, [regionFilter, typeFilter]);
 
-  // ✅ [변경] 클라이언트 사이드 필터 (정당 + 검색어만 — 지역/유형은 API로 처리)
-  const filtered = useMemo(() => candidates.filter(c => {
-    if (partyFilter === '소수정당' && MAJOR_PARTIES.has(c.party)) return false;
-    if (partyFilter !== '전체' && partyFilter !== '소수정당' && c.party !== partyFilter) return false;
-    if (search && ![c.name, c.party, c.career1, c.job].some(s => s && s.includes(search))) return false;
-    return true;
-  }), [candidates, partyFilter, search]);
+  // ✅ 클라이언트 사이드 필터 및 정렬
+  const filteredAndSorted = useMemo(() => {
+    let result = candidates.filter(c => {
+      if (partyFilter === '소수정당' && MAJOR_PARTIES.has(c.party)) return false;
+      if (partyFilter !== '전체' && partyFilter !== '소수정당' && c.party !== partyFilter) return false;
+      if (search && ![c.name, c.party, c.career1, c.job, c.sgg_name].some(s => s && s.includes(search))) return false;
+      return true;
+    });
 
-  const hasFilter = typeFilter !== '광역단체장' || regionFilter !== '서울' || partyFilter !== '전체' || search;
-  function reset() { setTypeFilter('광역단체장'); setRegionFilter('서울'); setPartyFilter('전체'); setSearch(''); }
+    // 정렬 로직 (이름순 vs 나이순)
+    result.sort((a, b) => {
+      if (sortBy === 'age') {
+        const ageA = parseInt(a.age) || 999; // 나이 없으면 맨 뒤로
+        const ageB = parseInt(b.age) || 999;
+        return ageA - ageB;
+      } else {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+    });
+
+    return result;
+  }, [candidates, partyFilter, search, sortBy]);
+
+  // ✅ 페이징 로직 적용
+  const totalPages = Math.ceil(filteredAndSorted.length / itemsPerPage);
+  const paginatedData = filteredAndSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // 1~10 블록 페이징 계산
+  const currentBlock = Math.ceil(currentPage / 10);
+  const startPage = (currentBlock - 1) * 10 + 1;
+  const endPage = Math.min(startPage + 9, totalPages);
+  const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+
+  const hasFilter = typeFilter !== '전체' || regionFilter !== '전체' || partyFilter !== '전체' || search;
+  function reset() { setTypeFilter('전체'); setRegionFilter('전체'); setPartyFilter('전체'); setSearch(''); setSortBy('name'); }
 
   return (
     <div>
@@ -138,20 +168,29 @@ export default function CandidatePanel() {
         <div style={{ fontSize: 12, color: '#888' }}>선관위 공식 데이터 · 실시간 조회</div>
       </div>
 
-      {/* ✅ [변경] 실데이터 기반 요약 카드 */}
       <SummaryCards candidates={candidates} />
 
-      {/* 필터 */}
       <div className="card" style={{ marginBottom: 14, padding: '16px 18px' }}>
         <FilterRow label="선거 유형" options={ELECTION_TYPES}     value={typeFilter}   onChange={setTypeFilter} />
-        {/* ✅ [변경] 지역 필터 — SUPPORTED_REGIONS 사용 */}
-        <FilterRow label="지역"     options={SUPPORTED_REGIONS}   value={regionFilter} onChange={setRegionFilter} />
+        <FilterRow label="지역"     options={ALL_REGIONS}         value={regionFilter} onChange={setRegionFilter} />
         <FilterRow label="정당"     options={PARTIES}             value={partyFilter}  onChange={setPartyFilter} getStyle={pStyle} />
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-          <div className="search-bar-wrap" style={{ flex: 1, marginBottom: 0 }}>
+        
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+          <div className="search-bar-wrap" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
             <span className="search-icon">🔍</span>
-            <input className="search-bar" value={search} onChange={e => setSearch(e.target.value)} placeholder="이름, 정당, 경력으로 검색..." />
+            <input className="search-bar" value={search} onChange={e => {setSearch(e.target.value); setCurrentPage(1);}} placeholder="이름, 정당, 선거구 검색..." />
           </div>
+          
+          {/* ✅ 정렬 버튼 추가 */}
+          <div style={{ display: 'flex', background: '#F5F7FA', borderRadius: 8, padding: 3, border: '1px solid #E5E8EC' }}>
+            <button onClick={() => setSortBy('name')} style={{ padding: '6px 12px', border: 'none', background: sortBy === 'name' ? 'white' : 'transparent', borderRadius: 5, fontSize: 12, fontWeight: 600, color: sortBy === 'name' ? '#1A5DC8' : '#888', cursor: 'pointer', boxShadow: sortBy === 'name' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              이름순
+            </button>
+            <button onClick={() => setSortBy('age')} style={{ padding: '6px 12px', border: 'none', background: sortBy === 'age' ? 'white' : 'transparent', borderRadius: 5, fontSize: 12, fontWeight: 600, color: sortBy === 'age' ? '#1A5DC8' : '#888', cursor: 'pointer', boxShadow: sortBy === 'age' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              나이순
+            </button>
+          </div>
+
           {hasFilter && (
             <button onClick={reset} style={{ padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, border: '1px solid #E5E8EC', background: 'white', color: '#666', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               필터 초기화
@@ -160,24 +199,18 @@ export default function CandidatePanel() {
         </div>
       </div>
 
-      {/* 결과 수 */}
       <div style={{ fontSize: 12, color: '#AAA', marginBottom: 8 }}>
-        {loading ? '불러오는 중...' : (
-          <><strong style={{ color: '#0D1B3E' }}>{filtered.length}</strong>명 표시 중
+        {loading ? '데이터베이스에서 불러오는 중...' : (
+          <><strong style={{ color: '#0D1B3E' }}>{filteredAndSorted.length}</strong>명 표시 중
           {[regionFilter, typeFilter, partyFilter].filter(f => f !== '전체').map((f, i) => (
             <span key={i} style={{ marginLeft: 5, color: '#1A5DC8', fontWeight: 600 }}>[{f}]</span>
           ))}
-          <span style={{ marginLeft: 8, color: '#CCC' }}>· 행 클릭 시 상세 정보 확인</span></>
+          </>
         )}
       </div>
 
-      {error && (
-        <div style={{ padding: '12px 16px', background: '#FEF0F0', borderRadius: 8, color: '#E03030', fontSize: 13, marginBottom: 12 }}>
-          ⚠️ {error}
-        </div>
-      )}
+      {error && <div style={{ padding: '12px 16px', background: '#FEF0F0', borderRadius: 8, color: '#E03030', fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
 
-      {/* 테이블 */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table className="reg-table">
           <thead>
@@ -195,9 +228,9 @@ export default function CandidatePanel() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center', color: '#AAA', padding: 40 }}>불러오는 중...</td></tr>
-            ) : filtered.map(c => {
-              const key        = `${c.sd_name}_${c.name}`;
+              <tr><td colSpan={9} style={{ textAlign: 'center', color: '#AAA', padding: 40 }}>대용량 데이터를 처리 중입니다. 잠시만 기다려주세요...</td></tr>
+            ) : paginatedData.map(c => {
+              const key        = `${c.id}_${c.name}`; // id 사용 권장
               const isExpanded = expandedKey === key;
               const ps         = pStyle(c.party);
               const ss         = STATUS_STYLE[c.reg_status] ?? STATUS_STYLE['등록'];
@@ -206,12 +239,12 @@ export default function CandidatePanel() {
                   <tr style={{ cursor: 'pointer', background: isExpanded ? '#EBF0FA' : undefined }}
                     onClick={() => setExpandedKey(isExpanded ? null : key)}>
                     <td style={{ fontSize: 11, color: '#888' }}>{c.sg_type_label}</td>
-                    <td style={{ color: '#555', fontSize: 12 }}>{c.sgg_name || c.sd_name}</td>
+                    <td style={{ color: '#555', fontSize: 12 }}>{c.sd_name} {c.sgg_name !== c.sd_name ? c.sgg_name : ''}</td>
                     <td style={{ fontWeight: 700 }}>{c.name}</td>
                     <td style={{ color: '#888', fontSize: 12 }}>{c.gender}</td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: ps.bg, color: ps.color }}>
-                        {c.party}
+                        {c.party || '무소속'}
                       </span>
                     </td>
                     <td style={{ color: '#555' }}>{c.age}세</td>
@@ -229,9 +262,9 @@ export default function CandidatePanel() {
                     <tr>
                       <td colSpan={9} style={{ padding: '16px 24px', background: '#F7F9FC', borderTop: '2px solid #1A5DC8' }}>
                         <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
-                          <strong>{c.name}</strong> ({c.party}) · {c.age}세 · {c.gender}<br />
-                          {c.career1 && <span>경력: {c.career1}<br /></span>}
-                          {c.career2 && <span>{c.career2}<br /></span>}
+                          <strong>{c.name}</strong> ({c.party || '무소속'}) · {c.age}세 · {c.gender}<br />
+                          {c.career1 && <span>주요경력 1: {c.career1}<br /></span>}
+                          {c.career2 && <span>주요경력 2: {c.career2}<br /></span>}
                           {c.education && <span>학력: {c.education}</span>}
                         </div>
                       </td>
@@ -240,11 +273,47 @@ export default function CandidatePanel() {
                 </Fragment>
               );
             })}
-            {!loading && filtered.length === 0 && (
+            {!loading && paginatedData.length === 0 && (
               <tr><td colSpan={9} style={{ textAlign: 'center', color: '#AAA', padding: 40 }}>해당 조건의 후보자 데이터가 없습니다.</td></tr>
             )}
           </tbody>
         </table>
+        
+        {/* ✅ [추가] 1~10 블록 페이징 UI */}
+        {!loading && totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, padding: '20px 0', borderTop: '1px solid #E5E8EC', background: 'white' }}>
+            <button 
+              disabled={startPage === 1} 
+              onClick={() => setCurrentPage(startPage - 1)}
+              style={{ padding: '6px 12px', border: '1px solid #E5E8EC', background: 'white', borderRadius: 6, cursor: startPage === 1 ? 'not-allowed' : 'pointer', color: startPage === 1 ? '#CCC' : '#444' }}
+            >
+              이전
+            </button>
+
+            {pageNumbers.map(num => (
+              <button 
+                key={num} 
+                onClick={() => setCurrentPage(num)}
+                style={{ 
+                  width: 32, height: 32, border: 'none', borderRadius: 6, cursor: 'pointer',
+                  background: currentPage === num ? '#1A5DC8' : 'transparent',
+                  color: currentPage === num ? 'white' : '#666',
+                  fontWeight: currentPage === num ? 700 : 500
+                }}
+              >
+                {num}
+              </button>
+            ))}
+
+            <button 
+              disabled={endPage === totalPages} 
+              onClick={() => setCurrentPage(endPage + 1)}
+              style={{ padding: '6px 12px', border: '1px solid #E5E8EC', background: 'white', borderRadius: 6, cursor: endPage === totalPages ? 'not-allowed' : 'pointer', color: endPage === totalPages ? '#CCC' : '#444' }}
+            >
+              다음
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

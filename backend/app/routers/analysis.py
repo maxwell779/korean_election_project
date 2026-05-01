@@ -102,3 +102,31 @@ def chatbot(
         importance_threshold = importance_threshold,
     )
     return result
+
+@router.get(
+    "/guide",
+    summary="주소 기반 투표 가이드 및 후보자 조회",
+)
+def get_address_guide(
+    addr: str = Query(..., description="유권자 주소 (예: 대구 달서구)"),
+):
+    try:
+        from app.services.ai_analyzer import get_candidates_by_address
+        return get_candidates_by_address(addr)
+    except ImportError:
+        raise HTTPException(status_code=503, detail="ai_analyzer 모듈 로드 실패.")
+
+@router.get(
+    "/promise-match",
+    summary="주소/키워드 기반 공약 매칭 AI 분석",
+)
+def get_promise_match(
+    addr: str = Query(..., description="유권자 주소 (예: 대구 달서구)"),
+    sg_type: str = Query(..., description="선거 종류 (예: 광역단체장)"),
+    keyword: str = Query(..., description="관심 키워드 (예: 창업, AI)"),
+):
+    try:
+        from app.services.ai_analyzer import analyze_keyword_match
+        return analyze_keyword_match(addr, sg_type, keyword)
+    except ImportError:
+        raise HTTPException(status_code=503, detail="ai_analyzer 모듈 로드 실패.")

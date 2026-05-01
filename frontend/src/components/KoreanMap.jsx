@@ -326,12 +326,12 @@ export default function KoreanMap({ isLive = false }) {
           )}
         </div>
 
-        {/* ✅ [변경] 우측 패널 — API 실데이터로 교체 */}
-        <div style={{ width: 148, flexShrink: 0, overflowY: 'auto', maxHeight: MAP_H }}>
+        {/* ✅ [완벽 수정] width: 200과 글자 자르기(ellipsis)를 없애고 flex: 1로 남은 공간 100% 활용 */}
+        <div style={{ flex: 1, minWidth: 250, overflowY: 'auto', maxHeight: MAP_H, paddingRight: 12 }}>
           {level === 'province' ? (
             <>
-              <div className="map-panel-title">광역단체장 현황</div>
-              <div className="map-panel-sub">
+              <div className="map-panel-title" style={{ marginBottom: 12 }}>광역단체장 현황</div>
+              <div className="map-panel-sub" style={{ marginBottom: 8 }}>
                 {loadingData ? '데이터 로딩 중...' : '클릭 → 시군구 이동'}
               </div>
               {provinces?.features.map((f, i) => {
@@ -340,21 +340,25 @@ export default function KoreanMap({ isLive = false }) {
                 const summary = region ? summaryMap[region] : null;
                 const color  = getColor(f.properties.name, isLive, summaryMap);
                 return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #F0F2F5', fontSize: 12, cursor: 'pointer' }}
+                  // ✅ 텍스트 잘림(maxWidth, ellipsis) 속성 완전 제거 및 패딩 확대
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #F0F2F5', cursor: 'pointer' }}
                     onClick={() => handleProvinceClick(f.properties.code, f.properties.name)}>
-                    <span style={{ color: '#333' }}>{info?.short ?? f.properties.name}</span>
-                    {/* ✅ [변경] 하드코딩 정당 → API 실데이터 */}
+                    
+                    <span style={{ color: '#1A1A1A', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                      {info?.short ?? f.properties.name}
+                    </span>
+                    
                     {summary ? (
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, color, fontSize: 10 }}>
+                      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <div style={{ fontWeight: 800, color, fontSize: 13 }}>
                           {summary.top_candidate_ko}
                         </div>
-                        <div style={{ fontSize: 9, color: '#AAA' }}>
-                          {summary.probability_pct}%
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2, fontWeight: 600 }}>
+                          확률 {summary.probability_pct}%
                         </div>
                       </div>
                     ) : (
-                      <span style={{ color: '#CCC', fontSize: 11 }}>—</span>
+                      <span style={{ color: '#CCC', fontSize: 12 }}>—</span>
                     )}
                   </div>
                 );
@@ -365,9 +369,9 @@ export default function KoreanMap({ isLive = false }) {
               <div className="map-panel-title">{PROVINCE_INFO[selectedProv?.name]?.short ?? selectedProv?.name}</div>
               <div className="map-panel-sub">시군구 {muniList.length}개{selectedProv?.code === DAEGU_CODE && <span style={{ marginLeft: 4, fontSize: 10, color: '#1A5DC8' }}>(군위군 포함)</span>}</div>
               {muniList.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 0', borderBottom: '1px solid #F5F5F5', fontSize: 12, color: '#444' }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 0', borderBottom: '1px solid #F5F5F5', fontSize: 13, color: '#444' }}>
                   {f.properties.name}
-                  {f.properties.name === GUNWI_NAME && <span style={{ fontSize: 9, color: '#1A5DC8', background: '#EBF0FA', padding: '1px 4px', borderRadius: 3 }}>편입</span>}
+                  {f.properties.name === GUNWI_NAME && <span style={{ fontSize: 10, color: '#1A5DC8', background: '#EBF0FA', padding: '2px 6px', borderRadius: 4 }}>편입</span>}
                 </div>
               ))}
             </>

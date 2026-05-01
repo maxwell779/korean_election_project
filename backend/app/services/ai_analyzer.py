@@ -1,21 +1,221 @@
 # backend/app/services/ai_analyzer.py
 # [파트 C] 백승훈 담당
 
+
+
 import os
 import re
 import json
 import time
+import requests
 import pandas as pd
 import plotly.graph_objects as go
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from app.database import SessionLocal
 from app.models import Candidate
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client()
+
+PUBLIC_KEY = os.getenv("NEC_API_KEY", "")
+SG_ID_2026 = "20260603"
+
+PROMISE_URL = "http://apis.data.go.kr/9760000/ElecPrmsInfoInqireService/getCnddtElecPrmsInfoInqire"
+PARTY_POLICY_URL = "http://apis.data.go.kr/9760000/ElecPolitPrtyInfoInqireService/getPolitPrtyPolicyInqire"
+
+KEYWORD_EXPAND = {
+    "청년취업":  ["청년", "일자리", "취업", "고용"],
+    "실버산업":  ["노인", "고령", "실버", "요양", "복지", "시니어"],
+    "창업":      ["창업", "소상공인", "자영업", "스타트업", "중소기업"],
+    "부동산":    ["주택", "부동산", "아파트", "재개발"],
+    "교육":      ["교육", "학교", "입시", "학생"],
+    "환경":      ["환경", "기후", "탄소", "미세먼지"],
+    "교통":      ["교통", "지하철", "버스", "도로"],
+    "복지":      ["복지", "의료", "돌봄", "장애인"],
+    "청년":      ["청년", "청소년", "청년층", "젊은", "20대", "30대"],
+    "여성":      ["여성", "성평등", "출산", "육아", "보육"],
+    "안전":      ["안전", "범죄", "경찰", "소방", "재난"],
+    "경제":      ["경제", "성장", "산업", "투자", "일자리"],
+    "AI":        ["AI", "인공지능", "디지털", "스마트", "데이터"],
+    "로봇":      ["로봇", "자동화", "제조", "스마트팩토리"],
+}
+
+# =============================================================================
+# 1. DB 데이터 로드 & 주소 파싱 (수정본)
+# =============================================================================
+
+def load_candidates(region: str = None, sg_type: str = None, registered_only: bool = True) -> pd.DataFrame:
+    db = SessionLocal()
+    try:
+        q = db.query(Candidate)
+        if registered_only:
+            q = q.filter(Candidate.reg_status == "등록")
+        if region:
+            # 💡 정확한 지역 필터링을 위해 like 사용
+            q = q.filter(Candidate.sd_name.like(f"%{region}%"))
+        if sg_type:
+            q = q.filter(Candidate.sg_type_label == sg_type)
+        rows = q.all()
+    finally:
+        db.close()
+
+    data = [{
+        "name":          r.name,
+        "party":         r.party,
+        "sd_name":       r.sd_name,
+        "sgg_name":      r.sgg_name,
+        "sg_type_label": r.sg_type_label,
+        "career1":       r.career1,
+        "career2":       r.career2,
+        "education":     r.education,
+        "reg_status":    r.reg_status,
+    } for r in rows]
+
+    df = pd.DataFrame(data)
+    
+    # 💡 [핵심 방어 코드] 검색된 후보가 0명일 때 컬럼이 있는 빈 DataFrame 반환
+    if df.empty:
+        df = pd.DataFrame(columns=["name", "party", "sd_name", "sgg_name", "sg_type_label", "career1", "career2", "education", "reg_status"])
+    return df
+
+# ... (_parse_sd_name, _parse_sgg_name, get_candidates_by_address, fetch_promises 등 중간 함수들은 기존 그대로 유지) ...
+
+def _parse_sd_name(addr: str) -> str:
+    parts = addr.split()
+    if not parts: return ""
+    mapping = {"서울": "서울특별시", "부산": "부산광역시", "대구": "대구광역시", "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시", "울산": "울산광역시", "세종": "세종특별자치시", "경기": "경기도", "강원": "강원특별자치도", "충북": "충청북도", "충남": "충청남도", "전북": "전북특별자치도", "전남": "전라남도", "경북": "경상북도", "경남": "경상남도", "제주": "제주특별자치도"}
+    return mapping.get(parts[0][:2], parts[0])
+
+def _parse_sgg_name(addr: str) -> str:
+    parts = addr.split()
+    return parts[1] if len(parts) > 1 else ""
+
+def get_candidates_by_address(addr: str) -> dict:
+    sd_name = _parse_sd_name(addr)
+    sgg_name = _parse_sgg_name(addr)
+    df = load_candidates(region=sd_name)
+    
+    elections = {}
+    for sg_type in ["광역단체장", "교육감", "기초단체장", "광역의회의원", "기초의회의원"]:
+        sub_df = df[df["sg_type_label"] == sg_type]
+        if sgg_name and sg_type in ["기초단체장", "광역의회의원", "기초의회의원"]:
+            sub_df = sub_df[sub_df["sgg_name"].fillna("").str.contains(sgg_name)]
+        elections[sg_type] = sub_df.to_dict(orient="records")
+        
+    return {
+        "sd_name": sd_name,
+        "sgg_name": sgg_name,
+        "elections": elections,
+        "message": f"{sd_name} {sgg_name} 지역 후보자 목록을 불러왔습니다."
+    }
+
+# =============================================================================
+# 2. 공약/키워드 매칭 로직 (Tier 1, 2, 3)
+# =============================================================================
+
+def fetch_promises(sg_typecode: str) -> list:
+    if not PUBLIC_KEY: return []
+    try:
+        resp = requests.get(PROMISE_URL, params={"serviceKey": PUBLIC_KEY, "pageNo": "1", "numOfRows": "100", "sgId": SG_ID_2026, "sgTypecode": sg_typecode, "type": "json"}, timeout=15)
+        return resp.json().get("response", {}).get("body", {}).get("items", {}).get("item", []) or []
+    except: return []
+
+def fetch_party_policy(sg_typecode: str) -> list:
+    if not PUBLIC_KEY: return []
+    try:
+        resp = requests.get(PARTY_POLICY_URL, params={"serviceKey": PUBLIC_KEY, "pageNo": "1", "numOfRows": "100", "sgId": SG_ID_2026, "sgTypecode": sg_typecode, "type": "json"}, timeout=15)
+        return resp.json().get("response", {}).get("body", {}).get("items", {}).get("item", []) or []
+    except: return []
+
+def calc_match(text: str, keyword: str) -> tuple:
+    if not text: return 0, []
+    text_l = text.lower()
+    terms = KEYWORD_EXPAND.get(keyword, [keyword])
+    score = 30 if keyword in text else 0
+    reasons = [f"'{keyword}' 직접 언급"] if score else []
+
+    for term in terms:
+        if term != keyword and term in text_l:
+            score += min(text_l.count(term) * 20, 40)
+            reasons.append(term)
+    return min(int(score), 100), list(dict.fromkeys(reasons))
+
+def explain_top_candidates(df: pd.DataFrame, keyword: str, top_n: int = 3) -> pd.DataFrame:
+    df["ai_explain"] = ""
+    for idx, row in df.head(top_n).iterrows():
+        try:
+            prompt = f"키워드 '{keyword}'에 대해 후보자 '{row['후보명']}'의 다음 원문 내용을 1문장으로 핵심만 요약해줘.\n[원문]\n{row['원문'][:500]}"
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            df.at[idx, "ai_explain"] = response.text.strip()
+        except:
+            df.at[idx, "ai_explain"] = "AI 요약을 생성하지 못했습니다."
+    return df
+
+# =============================================================================
+# 2. 공약/키워드 매칭 로직 (수정본)
+# =============================================================================
+
+def analyze_keyword_match(addr: str, sg_type: str, keyword: str) -> dict:
+    sg_type_map = {"광역단체장": "3", "교육감": "4", "광역의회의원": "5", "기초단체장": "6", "기초의회의원": "7"}
+    sg_typecode = sg_type_map.get(sg_type, "3")
+    
+    sd_name = _parse_sd_name(addr)
+    sgg_name = _parse_sgg_name(addr)
+    
+    promise_items = fetch_promises(sg_typecode)
+    result_rows, source_used = [], ""
+
+    if promise_items:
+        for item in promise_items:
+            name, party, promise = item.get("cnddtNm", ""), item.get("jdName", ""), item.get("prmsOrgzCn", "") or ""
+            if not name or sd_name not in item.get("sdName", ""): continue
+            match_pct, reasons = calc_match(promise, keyword)
+            result_rows.append({"후보명": name, "정당": party, "지역": f"{item.get('sdName','')} {item.get('sggName','')}", "선거유형": sg_type, "매칭도": match_pct, "매칭근거": ", ".join(reasons) or "없음", "출처": "선거공약", "원문": promise})
+        source_used = "선거공약 API"
+
+    if not result_rows:
+        policy_items = fetch_party_policy(sg_typecode)
+        cdf = load_candidates(region=sd_name, sg_type=sg_type)
+        # 💡 [핵심 방어 코드] cdf가 비어있지 않을 때만 sgg_name 필터링 수행
+        if sgg_name and sg_type in ["기초단체장", "광역의회의원", "기초의회의원"] and not cdf.empty:
+            cdf = cdf[cdf["sgg_name"].fillna("").str.contains(sgg_name)]
+            
+        if policy_items and not cdf.empty:
+            party_map = {item.get("jdName", ""): str(item.get("prmsOrgzCn", "")) + str(item.get("prmsTitl", "")) for item in policy_items if item.get("jdName")}
+            for _, cand in cdf.iterrows():
+                # 💡 [핵심 방어 코드] 정당이 None일 경우 빈 문자열로 처리
+                safe_party = str(cand['party']) if pd.notna(cand['party']) and cand['party'] else ""
+                
+                policy_text = next((text for p, text in party_map.items() if p in safe_party), "")
+                if not policy_text: continue
+                match_pct, reasons = calc_match(policy_text, keyword)
+                if match_pct > 0:
+                    result_rows.append({"후보명": cand['name'], "정당": cand['party'], "지역": f"{cand['sd_name']} {cand['sgg_name']}", "선거유형": sg_type, "매칭도": match_pct, "매칭근거": ", ".join(reasons), "출처": "정당정책", "원문": policy_text[:500]})
+            source_used = "정당정책 API"
+            
+    if not result_rows:
+        cdf = load_candidates(region=sd_name, sg_type=sg_type)
+        if sgg_name and sg_type in ["기초단체장", "광역의회의원", "기초의회의원"] and not cdf.empty:
+            cdf = cdf[cdf["sgg_name"].fillna("").str.contains(sgg_name)]
+        for _, cand in cdf.iterrows():
+            # 💡 [핵심 방어 코드] 경력이나 학력이 None일 경우를 안전하게 가져옴
+            text = f"{cand.get('career1','')} {cand.get('career2','')} {cand.get('education','')}"
+            match_pct, reasons = calc_match(text, keyword)
+            result_rows.append({"후보명": cand['name'], "정당": cand['party'], "지역": f"{cand['sd_name']} {cand['sgg_name']}", "선거유형": sg_type, "매칭도": match_pct, "매칭근거": ", ".join(reasons) or "없음", "출처": "경력(CSV)", "원문": text})
+        source_used = "경력 데이터(CSV)"
+
+    df = pd.DataFrame(result_rows)
+    if not df.empty:
+        df = df.sort_values("매칭도", ascending=False).reset_index(drop=True)
+        df = explain_top_candidates(df, keyword, top_n=3)
+        
+    return {"source": source_used, "results": df.to_dict(orient="records")}
+
 
 
 # =============================================================================
@@ -96,7 +296,11 @@ def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: 
     # [수정] text 변수 초기화 — except 블록에서 UnboundLocalError 방지
     text = ""
     try:
-        response = model.generate_content(prompt)
+        # 최신 고성능/빠른 응답 모델인 gemini-2.5-flash 사용
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
         text = response.text.strip()
 
         if "```" in text:
@@ -402,8 +606,8 @@ def chatbot_query(
     user_input: str,
     news_list: list,
     candidate_list: list = None,
-    importance_threshold: int = 2,
-    delay_seconds: float = 0.5,
+    importance_threshold: int = 1,  # 💡 [수정] 기본값 1로 하향
+    delay_seconds: float = 4.0,     # 💡 [수정] 구글 API 429 에러 방지를 위해 4초 텀을 줌!
 ) -> dict:
     candidate = extract_candidate_from_query(user_input)
 
@@ -431,6 +635,16 @@ def chatbot_query(
             "pre_filtered_count": 0, "analyzed_count": 0, "events": [],
             "message": f"'{candidate}' 관련 뉴스가 없습니다.",
         }
+    # 💡 [핵심 해결] API Rate Limit 방지를 위해 최신 기사 10건으로 제한!
+    pre_filtered = pre_filtered[:5]
+
+    events = analyze_batch(
+        news_list            = pre_filtered,
+        candidate            = candidate,
+        candidate_list       = candidate_list,
+        importance_threshold = importance_threshold,
+        delay_seconds        = delay_seconds,
+    )
 
     events = analyze_batch(
         news_list            = pre_filtered,

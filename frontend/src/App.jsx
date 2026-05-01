@@ -6,6 +6,8 @@ import CandidatePanel from './components/CandidatePanel';
 import PolyMarketPage from './pages/PolyMarketPage';
 import AISummary from './components/AISummary';
 import { ELECTION_DATE } from './data/mock';
+import NewsPanel from './components/NewsPanel';
+import AIAnalyzer from './components/AIAnalyzer'; // 👈 기존 AISummary 대신 임포트
 
 function Countdown() {
   const [t, setT] = useState({});
@@ -57,7 +59,8 @@ const TABS = [
   { id: 'result',     label: '선거개표현황' },
   { id: 'register',   label: '선거등록현황' },
   { id: 'polymarket', label: 'PolyMarket 정보' },
-  { id: 'ai',         label: 'AI 검색' },
+  { id: 'news',       label: '네이버 뉴스' },  // ✅ 새로 추가된 탭!
+  { id: 'analyzer', label: 'AI 공약 분석' },
 ];
 
 export default function App() {
@@ -106,7 +109,8 @@ export default function App() {
         {activeTab === 'result'     && <RegionDetail   isLive={isLive} />}
         {activeTab === 'register'   && <CandidatePanel />}
         {activeTab === 'polymarket' && <PolyMarketPage />}
-        {activeTab === 'ai'         && <AISummary />}
+        {activeTab === 'news'       && <NewsPanel />}        {/* ✅ 새로 추가된 렌더링! */}
+        {activeTab === 'analyzer'   && <AIAnalyzer />}
       </div>
     </>
   );

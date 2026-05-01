@@ -66,10 +66,15 @@ def get_market_latest(
     summary="폴리마켓 확률 추이 (타임라인 차트용)",
     description="날짜별 평균 당선 확률을 반환한다. TimelineChart.jsx 에서 사용.",
 )
+@router.get(
+    "/markets/{region}/history",
+    response_model=list[MarketHistoryOut],
+    summary="폴리마켓 확률 추이 (타임라인 차트용)",
+)
 def get_market_history(
     region:    str,
-    candidate: Optional[str] = Query(None, description="후보자 이름 (선택: 없으면 지역 전체 반환)"),
-    days:      int   = Query(30,   description="조회 기간 (일), 기본 30일"),
+    candidate: Optional[str] = Query(None, description="후보자 이름 (선택)"),
+    days:      int   = Query(30,   description="조회 기간 (일)"),
     db: Session = Depends(get_db),
 ):
     since = datetime.now() - timedelta(days=days)
@@ -79,13 +84,14 @@ def get_market_history(
             func.date(MarketPrice.fetched_at).label("date"),
             func.avg(MarketPrice.probability).label("probability"),
         )
-        .filter(
-            MarketPrice.region == region,
-            MarketPrice.fetched_at >= since,
-        )
+        .filter(MarketPrice.fetched_at >= since)
     )
+
+    # 💡 [핵심 수정] region이 "전체"가 아닐 때만 지역 필터링을 하도록 수정!
+    if region != "전체":
+        query = query.filter(MarketPrice.region == region)
     
-    # candidate 값이 들어왔을 때만 필터링 추가
+    # candidate 값이 들어왔을 때 필터링 추가
     if candidate:
         query = query.filter(
             (MarketPrice.candidate == candidate) |    # 영문명

@@ -1,10 +1,26 @@
 import { useState, useEffect } from 'react';
 import KoreanMap from '../components/KoreanMap';
-// ✅ [추가] API 함수 import — index.js에 이미 정의되어 있음
 import { getNews, getDashboardSummary } from '../api/index';
 
-// ✅ [변경 전] mock에서 NEWS, POLYMARKET import
-// import { NEWS, POLYMARKET } from '../data/mock';
+const ALL_REGIONS = ['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+
+// ✅ [추가] DB에 아직 등록되지 않은 유력 후보들의 정당 매핑 (PolyMarketPage와 동일)
+const CANDIDATE_PARTY_MAP = {
+  '정원오': '더불어민주당', '오세훈': '국민의힘', '박형준': '국민의힘',
+  '전재수': '더불어민주당', '김동연': '더불어민주당', '추미애': '더불어민주당',
+  '신용한': '더불어민주당', '김영환': '국민의힘', '박수현': '더불어민주당',
+  '김태흠': '국민의힘', '우상호': '더불어민주당', '김진태': '국민의힘',
+  '민형배': '더불어민주당', '허태정': '더불어민주당', '이장우': '국민의힘',
+  '홍준표': '국민의힘', '조경태': '국민의힘', '안철수': '국민의힘',
+  '나경원': '국민의힘', '한동훈': '국민의힘', '조국': '조국혁신당',
+  '이재명': '더불어민주당',
+  // 영문명
+  'Chong Won-oh': '더불어민주당', 'Oh Se-hoon': '국민의힘', 'Park Heong-joon': '국민의힘',
+  'Chun Jae-soo': '더불어민주당', 'Kim Dong-yeon': '더불어민주당', 'Choo Mi-ae': '더불어민주당',
+  'Shin Yong-han': '더불어민주당', 'Kim Young-hwan': '국민의힘', 'Park Soo-hyun': '더불어민주당',
+  'Kim Tae-heum': '국민의힘', 'Woo Sang-ho': '더불어민주당', 'Kim Jin-tae': '국민의힘',
+  'Min Hyung-bae': '더불어민주당', 'Huh Tae-jung': '더불어민주당', 'Lee Jang-woo': '국민의힘'
+};
 
 function VoteStats({ isLive }) {
   const parties = [
@@ -64,27 +80,42 @@ function VoteStats({ isLive }) {
 }
 
 export default function Dashboard({ isLive }) {
-  // ✅ [추가] 실데이터 상태
   const [news,        setNews]        = useState([]);
   const [polymarket,  setPolymarket]  = useState([]);
   const [newsLoading, setNewsLoading] = useState(true);
   const [polyLoading, setPolyLoading] = useState(true);
 
-  // ✅ [추가] 뉴스 API 호출 (섹션 3) — 전국 공통 뉴스 최신 5건
+  // 전체 선거 통계 & 판세 상태
+  const [candStats, setCandStats] = useState({ total: 0, avgAge: 0, femalePct: 0 });
+  const [winStats,  setWinStats]  = useState({ blue: 0, red: 0 });
+
   useEffect(() => {
     setNewsLoading(true);
     getNews('전국')
-      .then(data => setNews(data.slice(0, 5)))
+      .then(data => {
+        const shuffled = data.sort(() => 0.5 - Math.random());
+        setNews(shuffled.slice(0, 5));
+      })
       .catch(() => setNews([]))
       .finally(() => setNewsLoading(false));
   }, []);
 
-  // ✅ [추가] 폴리마켓 API 호출 (섹션 4) — dashboard/summary에서 확률 데이터 추출
   useEffect(() => {
     setPolyLoading(true);
     getDashboardSummary()
       .then(data => {
-        // 확률 높은 순으로 정렬, 상위 5개
+        // ✅ [수정] 폴리마켓 데이터로 정당별 예상 우세 지역 계산 (매핑 적용)
+        let blue = 0;
+        let red = 0;
+        data.forEach(d => {
+           // DB에서 온 정당 정보가 없으면 하드코딩 매핑에서 가져옴!
+           const party = d.top_party || CANDIDATE_PARTY_MAP[d.top_candidate_ko] || CANDIDATE_PARTY_MAP[d.top_candidate];
+           
+           if (party === '더불어민주당') blue++;
+           if (party === '국민의힘') red++;
+        });
+        setWinStats({ blue, red });
+
         const sorted = [...data]
           .sort((a, b) => b.probability_pct - a.probability_pct)
           .slice(0, 5);
@@ -94,7 +125,29 @@ export default function Dashboard({ isLive }) {
       .finally(() => setPolyLoading(false));
   }, []);
 
-  // ✅ [변경] pub_date를 상대시간으로 변환하는 헬퍼
+  useEffect(() => {
+    Promise.all(ALL_REGIONS.map(r =>
+      fetch(`/api/candidates/${encodeURIComponent(r)}?sg_type_label=광역단체장`).then(res => res.json())
+    ))
+    .then(results => {
+      const all = results.flat();
+      let totalAge = 0;
+      let validAge = 0;
+      let femaleCount = 0;
+      all.forEach(c => {
+        if (c.gender === '여') femaleCount++;
+        const age = parseInt(c.age);
+        if (!isNaN(age)) { totalAge += age; validAge++; }
+      });
+      setCandStats({
+        total: all.length,
+        femalePct: all.length > 0 ? Math.round((femaleCount / all.length) * 100) : 0,
+        avgAge: validAge > 0 ? (totalAge / validAge).toFixed(1) : 0
+      });
+    })
+    .catch(err => console.error(err));
+  }, []);
+
   function timeAgo(pubDate) {
     if (!pubDate) return '';
     const diff = Date.now() - new Date(pubDate).getTime();
@@ -106,23 +159,30 @@ export default function Dashboard({ isLive }) {
 
   return (
     <div>
-      {/* 섹션 1: 요약 통계 */}
+      {/* 섹션 1: 요약 통계 (실데이터 및 판세 반영) */}
       <div style={{ marginBottom: 28 }}>
-        <div className="section-label"><span className="section-number">1</span>전체 선거 데이터 요약</div>
+        <div className="section-label"><span className="section-number">1</span>전체 선거 데이터 요약 (광역단체장 기준)</div>
         <div className="card-grid-4">
-          {[
-            { label: '총 선출직 수',   value: '4,450', sub: '광역·기초·의회·교육감 전체 합산' },
-            { label: '전체 후보 인원', value: '8,578', sub: '2026-04-28 선관위 등록 기준' },
-            { label: '여성 후보 비율', value: '24%',   sub: '전회 대비', badge: '▲ +2%p' },
-            { label: '후보 평균 연령', value: '54.2세', sub: '최연소 29세 · 최연장 83세' },
-          ].map((s, i) => (
-            <div className="stat-card" key={i}>
-              <div className="stat-label">{s.label}</div>
-              <div className="stat-value">{s.value}</div>
-              <div className="stat-sub">{s.sub}</div>
-              {s.badge && <div className="stat-badge up">{s.badge}</div>}
-            </div>
-          ))}
+          <div className="stat-card">
+            <div className="stat-label">등록 후보 인원</div>
+            <div className="stat-value">{candStats.total > 0 ? `${candStats.total}명` : '로딩중'}</div>
+            <div className="stat-sub">전국 17개 시도 기준</div>
+          </div>
+          <div className="stat-card" style={{ border: '2px solid #1A5DC8', background: '#F7FAFF' }}>
+            <div className="stat-label" style={{ color: '#1A5DC8', fontWeight: 700 }}>민주당 우세 예상</div>
+            <div className="stat-value" style={{ color: '#1A5DC8' }}>{polyLoading ? '-' : winStats.blue}곳</div>
+            <div className="stat-sub" style={{ color: '#1A5DC8' }}>PolyMarket 확률 1위 기준</div>
+          </div>
+          <div className="stat-card" style={{ border: '2px solid #E03030', background: '#FFF7F7' }}>
+            <div className="stat-label" style={{ color: '#E03030', fontWeight: 700 }}>국민의힘 우세 예상</div>
+            <div className="stat-value" style={{ color: '#E03030' }}>{polyLoading ? '-' : winStats.red}곳</div>
+            <div className="stat-sub" style={{ color: '#E03030' }}>PolyMarket 확률 1위 기준</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">후보 평균 연령</div>
+            <div className="stat-value">{candStats.avgAge > 0 ? `${candStats.avgAge}세` : '로딩중'}</div>
+            <div className="stat-sub">여성 후보 비율 {candStats.femalePct}%</div>
+          </div>
         </div>
       </div>
 
@@ -135,8 +195,6 @@ export default function Dashboard({ isLive }) {
 
       {/* 섹션 3+4: 뉴스 + 폴리마켓 */}
       <div className="two-col">
-
-        {/* ✅ [변경] 섹션 3 — mock NEWS → API 실데이터 */}
         <div>
           <div className="section-label"><span className="section-number">3</span>오늘의 주요 선거 뉴스 TOP 5</div>
           <div className="card">
@@ -150,7 +208,6 @@ export default function Dashboard({ isLive }) {
                   <div className={`news-rank ${i < 2 ? 'top' : ''}`}>{i + 1}</div>
                   <div style={{ flex: 1 }}>
                     <div className="news-title">{n.title}</div>
-                    {/* ✅ candidate(후보자명) + timeAgo(pub_date) 표시 */}
                     <div className="news-meta">
                       {n.candidate && `${n.candidate} · `}{timeAgo(n.pub_date)}
                     </div>
@@ -162,7 +219,6 @@ export default function Dashboard({ isLive }) {
           </div>
         </div>
 
-        {/* ✅ [변경] 섹션 4 — mock POLYMARKET → getDashboardSummary 실데이터 */}
         <div>
           <div className="section-label"><span className="section-number">4</span>Polymarket 당선 확률 Top 5</div>
           <div className="card">
@@ -174,7 +230,6 @@ export default function Dashboard({ isLive }) {
               polymarket.map((p, i) => (
                 <div className="poly-item" key={i}>
                   <div style={{ flex: 1 }}>
-                    {/* ✅ top_candidate_ko(한글 후보명) + region 표시 */}
                     <div className="poly-title">{p.region} {p.top_candidate_ko}</div>
                     <div className="poly-volume">
                       {p.top_party && <span style={{ fontSize: 11, color: '#888' }}>{p.top_party}</span>}
@@ -184,7 +239,6 @@ export default function Dashboard({ isLive }) {
                     <div className={`poly-pct ${p.probability_pct >= 60 ? 'high' : p.probability_pct >= 40 ? 'mid' : 'low'}`}>
                       {p.probability_pct}%
                     </div>
-                    {/* ✅ price_change_1d 실데이터 */}
                     {p.price_change_1d != null && (
                       <div className={`poly-change ${p.price_change_1d > 0 ? 'up' : p.price_change_1d < 0 ? 'down' : 'flat'}`}>
                         {p.price_change_1d > 0 ? '▲' : p.price_change_1d < 0 ? '▼' : '—'}{' '}

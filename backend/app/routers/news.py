@@ -1,6 +1,4 @@
 # backend/app/routers/news.py
-# GET /api/news/{region}  →  뉴스 목록
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -13,37 +11,36 @@ from app.schemas import NewsOut
 
 router = APIRouter()
 
-
 @router.get(
     "/news/{region}",
     response_model=list[NewsOut],
-    summary="지역별 뉴스 목록",
-    description="해당 지역·후보자 관련 최신 뉴스를 반환한다.",
+    summary="지역별/전체 뉴스 목록",
+    description="해당 지역 및 조건에 맞는 뉴스를 반환한다. (전체 지역 지원)",
 )
 def get_news(
     region:    str,
-    candidate: Optional[str] = Query(
-        None, description="후보자 이름으로 필터 (없으면 지역 전체)"
-    ),
-    date: Optional[str] = Query(
-        None,
-        description="특정 날짜 뉴스 조회 (YYYY-MM-DD). 타임라인 날짜 클릭 팝업용."
-    ),
-    days:  int = Query(7,  description="최근 N일 뉴스 (date 없을 때 적용), 기본 7일"),
-    limit: int = Query(20, description="반환 건수 최대, 기본 20"),
+    candidate: Optional[str] = Query(None, description="후보자 이름으로 필터"),
+    category:  Optional[str] = Query(None, description="선거 유형(카테고리) 필터"),
+    date:      Optional[str] = Query(None, description="특정 날짜 뉴스 조회 (YYYY-MM-DD)"),
+    days:      int = Query(365,  description="최근 N일 뉴스, 기본 1년(365일)"),
+    limit:     int = Query(2000, description="반환 건수 최대 (프론트 페이징용)"),
     db: Session = Depends(get_db),
 ):
-    """
-    사용 예시:
-        /api/news/서울                                → 서울 전체 최신 뉴스
-        /api/news/서울?candidate=정원오               → 서울 정원오 최신 뉴스
-        /api/news/서울?candidate=정원오&date=2026-05-10 → 특정 날짜 뉴스
-    """
-    query = db.query(NewsSentiment).filter(NewsSentiment.region == region)
+    query = db.query(NewsSentiment)
 
+    # 1. 지역 필터 ('전체'가 아닐 때만 적용)
+    if region != "전체":
+        query = query.filter(NewsSentiment.region == region)
+        
+    # 2. 카테고리 필터 (광역단체장, 국회의원보궐 등)
+    if category and category != "전체":
+        query = query.filter(NewsSentiment.category == category)
+
+    # 3. 후보자 검색 필터 (부분 일치)
     if candidate:
-        query = query.filter(NewsSentiment.candidate == candidate)
+        query = query.filter(NewsSentiment.candidate.like(f"%{candidate}%"))
     
+    # 4. 날짜 필터
     if date:
         try:
             target_date = datetime.strptime(date, "%Y-%m-%d")
@@ -54,50 +51,36 @@ def get_news(
         since = datetime.now() - timedelta(days=days)
         query = query.filter(NewsSentiment.pub_date >= since)
 
-    results = (
-        query
-        .order_by(NewsSentiment.pub_date.desc())
-        .limit(limit)
-        .all()
-    )
-
+    # 최신순 정렬
+    results = query.order_by(NewsSentiment.pub_date.desc()).limit(limit).all()
     return results
-
 
 @router.get(
     "/news/{region}/sentiment-summary",
     summary="지역별 감성 점수 요약 (날짜별)",
-    description="TimelineChart.jsx 감성 막대용. 날짜별 평균 감성 점수를 반환한다.",
 )
 def get_sentiment_by_date(
     region:    str,
-    candidate: Optional[str] = Query(None, description="후보자 이름 (없으면 지역 전체 평균)"),
+    candidate: Optional[str] = Query(None, description="후보자 이름"),
     days:      int = Query(30,  description="최근 N일, 기본 30일"),
     db: Session = Depends(get_db),
 ):
-    """
-    사용 예시:
-        /api/news/서울/sentiment-summary?days=30
-        /api/news/서울/sentiment-summary?candidate=정원오&days=30
-    """
     since = datetime.now() - timedelta(days=days)
 
-    # 1. 기본 쿼리 작성 (지역, 날짜, 점수유무 필터링)
     query = db.query(
         func.date(NewsSentiment.pub_date).label("date"),
         func.avg(NewsSentiment.sentiment_score).label("avg_score"),
         func.count(NewsSentiment.id).label("article_count"),
     ).filter(
-        NewsSentiment.region           == region,
-        NewsSentiment.pub_date         >= since,
+        NewsSentiment.pub_date >= since,
         NewsSentiment.sentiment_score != None,
     )
 
-    # 2. 후보자 이름이 있으면 필터 추가
+    if region != "전체":
+        query = query.filter(NewsSentiment.region == region)
     if candidate:
         query = query.filter(NewsSentiment.candidate == candidate)
 
-    # 3. 그룹화 및 데이터 패치
     rows = query.group_by(func.date(NewsSentiment.pub_date)).all()
 
     return [
