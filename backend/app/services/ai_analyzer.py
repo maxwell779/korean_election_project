@@ -148,7 +148,7 @@ def explain_top_candidates(df: pd.DataFrame, keyword: str, top_n: int = 3) -> pd
         try:
             prompt = f"키워드 '{keyword}'에 대해 후보자 '{row['후보명']}'의 다음 원문 내용을 1문장으로 핵심만 요약해줘.\n[원문]\n{row['원문'][:500]}"
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-1.5-flash',
                 contents=prompt,
             )
             df.at[idx, "ai_explain"] = response.text.strip()
@@ -298,7 +298,7 @@ def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: 
     try:
         # 최신 고성능/빠른 응답 모델인 gemini-2.5-flash 사용
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=prompt,
         )
         text = response.text.strip()
