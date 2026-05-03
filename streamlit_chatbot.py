@@ -17,7 +17,13 @@ from dotenv import load_dotenv
 load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent))
 
-from ai_analyzer import get_candidates_by_address, keyword_match_candidates, load_candidates, explain_top_candidates
+from ai_analyzer import (
+    get_candidates_by_address,
+    keyword_match_candidates,
+    load_candidates,
+    explain_top_candidates,
+    _parse_sd_name,          # ← ai_analyzer에 존재하는 함수만 import
+)
 
 # ── 상수 ──────────────────────────────────────────────────────────────────────
 PUBLIC_KEY = os.getenv("PUBLIC_DATA_API_KEY", "")
@@ -60,6 +66,23 @@ KEYWORD_EXPAND = {
     "AI":        ["AI", "인공지능", "디지털", "스마트", "데이터"],
     "로봇":      ["로봇", "자동화", "제조", "스마트팩토리"],
 }
+
+
+# =============================================================================
+# ▼▼▼ 수정: _parse_sgg_name 로컬 정의 (ai_analyzer에 없는 함수) ▼▼▼
+# =============================================================================
+def _parse_sgg_name(address: str) -> str:
+    """
+    주소 문자열 → 시군구명 추출.
+    예) '대구 달서구' → '달서구'
+        '경기도 수원시 영통구' → '수원시'
+    """
+    parts = address.strip().split()
+    if len(parts) >= 2:
+        return parts[1]
+    return ""
+# =============================================================================
+
 
 # ── 페이지 설정 ────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="PolyElection 2026", page_icon="🗳️", layout="wide")
@@ -131,7 +154,7 @@ def fetch_party_policy(sg_typecode: str) -> list:
         return []
 
 
-def calc_match(text: str, keyword: str) -> tuple[int, list]:
+def calc_match(text: str, keyword: str):
     """
     텍스트 + 키워드 → (매칭도 %, 매칭 근거 리스트)
     - 키워드 직접 등장: +30점
@@ -194,7 +217,7 @@ def build_results_from_party_policy(
     정당 정책을 같은 정당 후보자에게 매핑하는 방식
     """
     # 정당 → 정책 텍스트 dict 구성
-    party_policy_map: dict[str, str] = {}
+    party_policy_map = {}
     for item in policy_items:
         party   = item.get("jdName", "")
         content = (item.get("prmsOrgzCn", "") or
@@ -285,7 +308,10 @@ def _render_result_cards(df: pd.DataFrame, source: str):
         score = row["매칭도"]
         color = "#22c55e" if score >= 60 else "#f59e0b" if score >= 30 else "#94a3b8"
         ai_txt = str(row.get("ai_explain", "") or "")
-        ai_block = f"<div style='font-size:12px;color:#1d4ed8;margin-top:6px;font-style:italic'>🤖 {ai_txt}</div>" if ai_txt else ""
+        ai_block = (
+            f"<div style='font-size:12px;color:#1d4ed8;margin-top:6px;font-style:italic'>"
+            f"🤖 {ai_txt}</div>"
+        ) if ai_txt else ""
         with cols[i]:
             st.markdown(f"""
 <div style='border:3px solid {color};padding:14px;border-radius:10px;
@@ -471,10 +497,9 @@ with tab3:
                 st.warning("📍 주소를 먼저 입력해주세요! (예: 대구 달서구)")
             st.stop()
 
-        # 주소 파싱
-        from ai_analyzer import _parse_sd_name, _parse_sgg_name
+        # ── 수정: inline import 제거 → 파일 상단에서 이미 import 완료 ──────
         sd_name  = _parse_sd_name(region_addr)
-        sgg_name = _parse_sgg_name(region_addr)
+        sgg_name = _parse_sgg_name(region_addr)  # 로컬 함수 사용
 
         # 사용자 메시지
         st.session_state.chat_history.append({"role": "user", "content": keyword})
@@ -504,9 +529,9 @@ with tab3:
                 time.sleep(0.2)
 
                 if policy_items:
-                    cdf         = load_candidates(region=sd_name, sg_type=sg_type)
+                    cdf = load_candidates(region=sd_name, sg_type=sg_type)
                     # 기초 선거는 sgg 필터 추가
-                    if sgg_name and sg_type in ["기초단체장","광역의회의원","기초의회의원"]:
+                    if sgg_name and sg_type in ["기초단체장", "광역의회의원", "기초의회의원"]:
                         cdf = cdf[cdf["sgg_name"].fillna("").str.contains(sgg_name, regex=False)]
                     result_rows = build_results_from_party_policy(policy_items, cdf, keyword, sg_type)
                     source_used = "정당정책 API"
@@ -514,7 +539,7 @@ with tab3:
                     # Tier 3
                     status.info("📁 경력 데이터 분석 중...")
                     cdf = load_candidates(region=sd_name, sg_type=sg_type)
-                    if sgg_name and sg_type in ["기초단체장","광역의회의원","기초의회의원"]:
+                    if sgg_name and sg_type in ["기초단체장", "광역의회의원", "기초의회의원"]:
                         cdf = cdf[cdf["sgg_name"].fillna("").str.contains(sgg_name, regex=False)]
                     result_rows = build_results_from_csv(cdf, keyword, sg_type)
                     source_used = "경력 데이터(CSV)"
@@ -548,9 +573,15 @@ with tab3:
                 top1      = result_df.iloc[0]
                 has_match = top1["매칭도"] > 0
                 if has_match:
-                    match_line = f"🥇 **1위: {top1['후보명']}** ({top1['정당']}) — 매칭도 **{top1['매칭도']}%** | 근거: {top1['매칭근거']}"
+                    match_line = (
+                        f"🥇 **1위: {top1['후보명']}** ({top1['정당']}) "
+                        f"— 매칭도 **{top1['매칭도']}%** | 근거: {top1['매칭근거']}"
+                    )
                 else:
-                    match_line = f"⚠️ 경력 데이터에 **'{keyword}'** 관련 키워드가 없습니다. 전체 후보 목록을 보여드립니다."
+                    match_line = (
+                        f"⚠️ 경력 데이터에 **'{keyword}'** 관련 키워드가 없습니다. "
+                        "전체 후보 목록을 보여드립니다."
+                    )
 
                 bot_text = (
                     f"**'{keyword}'** 키워드로 **{region_label} {sg_type}** 후보를 분석했습니다.\n\n"
@@ -563,7 +594,6 @@ with tab3:
                     "role": "assistant", "content": bot_text,
                     "result_df": result_df, "source": source_used,
                 })
-
 
 
 # ── TAB 4 ─────────────────────────────────────────────────────────────────────

@@ -45,7 +45,7 @@ load_dotenv()
 
 # ── Gemini 초기화 ─────────────────────────────────────────────────────────────
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 
 # =============================================================================
@@ -622,7 +622,7 @@ def get_region_analysis(
 # 7. 챗봇 후보자 뉴스 조회
 # =============================================================================
 
-def extract_candidate_from_query(user_input: str) -> str | None:
+def extract_candidate_from_query(user_input: str):
     """챗봇 입력에서 [후보자명] 패턴 추출"""
     import re
     match = re.search(r"\[([^\]]+)\]", user_input)
