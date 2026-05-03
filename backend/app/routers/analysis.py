@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from app.database import get_db
-from app.models import NewsSentiment, Candidate
+from app.models import NewsSentiment
 from app.schemas import AnalysisOut, ChatbotOut
 
 router = APIRouter()
@@ -85,7 +85,8 @@ def chatbot(
         {
             "date":        r.pub_date.strftime("%Y-%m-%d") if r.pub_date else "",
             "title":       r.title or "",
-            "content":     r.summary_3line or r.title or "",
+            # title + summary 를 모두 본문에 포함해 Gemini 판단 근거를 풍부하게 함
+            "content":     f"{r.title}\n{r.summary_3line}" if r.summary_3line else (r.title or ""),
             "description": r.title or "",
             "url":         r.url or "",
             "candidate":   r.candidate or "",
@@ -93,12 +94,10 @@ def chatbot(
         for r in news_rows
     ]
 
-    candidate_names = [row.name for row in db.query(Candidate.name).distinct().all()]
-
     result = chatbot_query(
         user_input           = query,
         news_list            = news_list,
-        candidate_list       = candidate_names,
+        candidate_list       = None,   # 수천 명 목록을 프롬프트에 넣으면 토큰 초과
         importance_threshold = importance_threshold,
     )
     return result

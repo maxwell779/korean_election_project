@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
-import { getCandidates } from '../api/index';
+import { getCandidates, getNews } from '../api/index';
 
 const ELECTION_TYPES = ['전체', '광역단체장', '광역의회의원', '교육감', '국회의원보궐', '기초단체장', '기초의회의원'];
 
 // ✅ [수정] 전국 17개 시도 모두 추가
-const ALL_REGIONS = ['전체', '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+const ALL_REGIONS = ['전체', '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '전남광주통합', '경북', '경남', '제주'];
 
 const PARTIES = ['전체', '더불어민주당', '국민의힘', '개혁신당', '조국혁신당', '정의당', '진보당', '소수정당', '무소속'];
 const MAJOR_PARTIES = new Set(['더불어민주당', '국민의힘', '개혁신당', '조국혁신당', '정의당', '진보당', '무소속']);
@@ -78,6 +78,143 @@ function SummaryCards({ candidates }) {
   );
 }
 
+function timeAgo(pubDate) {
+  if (!pubDate) return '';
+  const diff = Date.now() - new Date(pubDate).getTime();
+  const h = Math.floor(diff / 3600000);
+  if (h < 1) return '방금 전';
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
+
+function InfoRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 3 }}>
+      <span style={{ fontSize: 11, color: '#AAA', minWidth: 52, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 13, color: '#444' }}>{value}</span>
+    </div>
+  );
+}
+
+function CandidatePhoto({ c, color }) {
+  const initials = c.name?.slice(-1) ?? '?';
+  return (
+    <div style={{
+      width: 84, height: 106, borderRadius: 10,
+      background: color + '14', border: `2px solid ${color}28`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 34, fontWeight: 800, color,
+    }}>
+      {initials}
+    </div>
+  );
+}
+
+function ExpandedDetail({ c }) {
+  const [news,        setNews]        = useState([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const ps    = pStyle(c.party);
+  const color = ps.color;
+
+  useEffect(() => {
+    setNewsLoading(true);
+    getNews('전체', c.name)
+      .then(data => setNews((data || []).slice(0, 5)))
+      .catch(() => setNews([]))
+      .finally(() => setNewsLoading(false));
+  }, [c.name]);
+
+  const birthday = c.birthday
+    ? `${c.birthday.slice(0, 4)}.${c.birthday.slice(4, 6)}.${c.birthday.slice(6, 8)}`
+    : null;
+
+  return (
+    <div style={{ padding: '20px 28px', background: '#F7F9FC', borderTop: `2px solid ${color}` }}>
+      {/* ① 프로필 영역 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: 24, marginBottom: 20 }}>
+
+        {/* 사진 */}
+        <CandidatePhoto c={c} color={color} />
+
+        {/* 기본 정보 */}
+        <div>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#0D1B3E' }}>{c.name}</span>
+            {c.hanja_name && (
+              <span style={{ fontSize: 13, color: '#AAA', marginLeft: 7, fontWeight: 400 }}>{c.hanja_name}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            <span style={{ background: ps.bg, color: ps.color, padding: '3px 11px', borderRadius: 14, fontSize: 12, fontWeight: 700 }}>
+              {c.party || '무소속'}
+            </span>
+            <span style={{ background: '#F0F2F5', color: '#555', padding: '3px 11px', borderRadius: 14, fontSize: 12, fontWeight: 600 }}>
+              {c.sg_type_label}
+            </span>
+          </div>
+          <InfoRow label="나이"     value={c.age ? `${c.age}세` : null} />
+          <InfoRow label="성별"     value={c.gender === '남' ? '남성' : c.gender === '여' ? '여성' : c.gender} />
+          <InfoRow label="생년월일" value={birthday} />
+          <InfoRow label="직업"     value={c.job} />
+          <InfoRow label="선거구"   value={`${c.sd_name || ''} ${c.sgg_name && c.sgg_name !== c.sd_name ? c.sgg_name : ''}`.trim()} />
+        </div>
+
+        {/* 경력·학력 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#888', letterSpacing: '0.06em', marginBottom: 10 }}>경력 및 학력</div>
+          {c.career1 && (
+            <div style={{ display: 'flex', gap: 7, marginBottom: 7 }}>
+              <span style={{ color: color, fontSize: 13, flexShrink: 0, marginTop: 1 }}>▸</span>
+              <span style={{ fontSize: 13, color: '#444', lineHeight: 1.5 }}>{c.career1}</span>
+            </div>
+          )}
+          {c.career2 && (
+            <div style={{ display: 'flex', gap: 7, marginBottom: 7 }}>
+              <span style={{ color: color, fontSize: 13, flexShrink: 0, marginTop: 1 }}>▸</span>
+              <span style={{ fontSize: 13, color: '#444', lineHeight: 1.5 }}>{c.career2}</span>
+            </div>
+          )}
+          {c.education && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #E5E8EC',
+              fontSize: 12, color: '#777', lineHeight: 1.5 }}>
+              <span style={{ fontWeight: 600, color: '#999', marginRight: 6 }}>학력</span>
+              {c.education}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ② 뉴스 영역 */}
+      <div style={{ borderTop: '1px solid #E5E8EC', paddingTop: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#0D1B3E', marginBottom: 10 }}>
+          {c.name} 관련 최신 뉴스
+        </div>
+        {newsLoading ? (
+          <div style={{ color: '#AAA', fontSize: 13, padding: '8px 0' }}>뉴스 불러오는 중...</div>
+        ) : news.length === 0 ? (
+          <div style={{ color: '#AAA', fontSize: 13, padding: '8px 0' }}>최근 1년 이내 관련 뉴스가 없습니다.</div>
+        ) : news.map((n, i) => (
+          <div key={i}
+            onClick={() => n.url && window.open(n.url, '_blank')}
+            style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '8px 0',
+              borderBottom: i < news.length - 1 ? '1px solid #F0F2F5' : 'none',
+              cursor: n.url ? 'pointer' : 'default',
+            }}>
+            <span style={{ color: '#CBD0D8', fontSize: 10, flexShrink: 0, paddingTop: 4 }}>●</span>
+            <span style={{ flex: 1, fontSize: 13, color: '#1A1A1A', lineHeight: 1.45 }}>{n.title}</span>
+            <span style={{ fontSize: 11, color: '#AAA', whiteSpace: 'nowrap', flexShrink: 0, alignSelf: 'center' }}>
+              {timeAgo(n.pub_date)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CandidatePanel() {
   const [search,         setSearch]         = useState('');
   const [typeFilter,     setTypeFilter]     = useState('전체'); 
@@ -110,16 +247,26 @@ export default function CandidatePanel() {
       return fetch(url).then(res => res.json());
     };
 
+    // huboid 기준 중복 제거 (DB에 동일 huboid 중복 레코드 존재)
+    const dedup = (list) => {
+      const seen = new Set();
+      return list.filter(c => {
+        const key = c.huboid || `${c.name}_${c.sd_name}_${c.sgg_name}_${c.sg_type_label}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
     if (regionFilter === '전체') {
-      // '전체' 선택 시 17개 지역 순회
       const realRegions = ALL_REGIONS.filter(r => r !== '전체');
       Promise.all(realRegions.map(fetchRegion))
-        .then(results => setCandidates(results.flat()))
+        .then(results => setCandidates(dedup(results.flat())))
         .catch(err => { setError('데이터를 불러오지 못했습니다.'); setCandidates([]); })
         .finally(() => setLoading(false));
     } else {
       fetchRegion(regionFilter)
-        .then(data => setCandidates(data))
+        .then(data => setCandidates(dedup(data)))
         .catch(err => { setError('데이터를 불러오지 못했습니다.'); setCandidates([]); })
         .finally(() => setLoading(false));
     }
@@ -260,13 +407,8 @@ export default function CandidatePanel() {
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={9} style={{ padding: '16px 24px', background: '#F7F9FC', borderTop: '2px solid #1A5DC8' }}>
-                        <div style={{ fontSize: 13, color: '#444', lineHeight: 1.8 }}>
-                          <strong>{c.name}</strong> ({c.party || '무소속'}) · {c.age}세 · {c.gender}<br />
-                          {c.career1 && <span>주요경력 1: {c.career1}<br /></span>}
-                          {c.career2 && <span>주요경력 2: {c.career2}<br /></span>}
-                          {c.education && <span>학력: {c.education}</span>}
-                        </div>
+                      <td colSpan={9} style={{ padding: 0 }}>
+                        <ExpandedDetail c={c} />
                       </td>
                     </tr>
                   )}

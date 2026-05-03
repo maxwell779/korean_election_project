@@ -17,7 +17,8 @@ from app.models import Candidate
 
 load_dotenv()
 
-client = genai.Client()
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 PUBLIC_KEY = os.getenv("NEC_API_KEY", "")
 SG_ID_2026 = "20260603"
@@ -148,7 +149,7 @@ def explain_top_candidates(df: pd.DataFrame, keyword: str, top_n: int = 3) -> pd
         try:
             prompt = f"키워드 '{keyword}'에 대해 후보자 '{row['후보명']}'의 다음 원문 내용을 1문장으로 핵심만 요약해줘.\n[원문]\n{row['원문'][:500]}"
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model=GEMINI_MODEL,
                 contents=prompt,
             )
             df.at[idx, "ai_explain"] = response.text.strip()
@@ -218,36 +219,6 @@ def analyze_keyword_match(addr: str, sg_type: str, keyword: str) -> dict:
 
 
 
-# =============================================================================
-# 1. 후보자 데이터 로드
-# =============================================================================
-
-def load_candidates(region: str = None, sg_type: str = None, registered_only: bool = True) -> pd.DataFrame:
-    db = SessionLocal()
-    try:
-        q = db.query(Candidate)
-        if registered_only:
-            q = q.filter(Candidate.reg_status == "등록")
-        if region:
-            q = q.filter(Candidate.sd_name == region)
-        if sg_type:
-            q = q.filter(Candidate.sg_type_label == sg_type)
-        rows = q.all()
-    finally:
-        db.close()
-
-    return pd.DataFrame([{
-        "name":          r.name,
-        "party":         r.party,
-        "sd_name":       r.sd_name,
-        "sgg_name":      r.sgg_name,
-        "sg_type_label": r.sg_type_label,
-        "career1":       r.career1,
-        "career2":       r.career2,
-        "reg_status":    r.reg_status,
-    } for r in rows])
-
-
 def get_candidate_names(region: str = None, sg_type: str = "광역단체장") -> list:
     df = load_candidates(region=region, sg_type=sg_type)
     return df["name"].tolist() if not df.empty else []
@@ -258,12 +229,10 @@ def get_candidate_names(region: str = None, sg_type: str = "광역단체장") ->
 # =============================================================================
 
 def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: list = None) -> dict:
-    candidates_str = ", ".join(candidate_list) if candidate_list else candidate
-
+    # candidate_list 는 더 이상 프롬프트에 포함하지 않음 (토큰 초과 방지)
     prompt = f"""
 다음 뉴스 기사를 분석하세요.
 분석 대상 후보자: {candidate}
-참고 후보자 목록: {candidates_str}
 
 [뉴스 제목]
 {title}
@@ -271,7 +240,7 @@ def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: 
 [뉴스 본문]
 {content[:1500]}
 
-아래 JSON 형식으로만 답하세요. 다른 텍스트는 절대 포함하지 마세요.
+아래 JSON 형식으로만 답하세요. 다른 텍스트나 마크다운(```)은 절대 포함하지 마세요.
 
 {{
   "is_relevant": true 또는 false,
@@ -283,7 +252,7 @@ def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: 
 }}
 
 판단 기준:
-- is_relevant: {candidate} 이름이 직접 언급되거나 명확히 관련된 경우만 true
+- is_relevant: {candidate} 이름이 직접 언급되거나 {candidate}와 명확히 관련된 경우 true. 직함/대명사로 지칭해도 true로 판단
 - sentiment_score: {candidate}에게 유리하면 양수(+), 불리하면 음수(-)
 - importance:
     5 = 스캔들, 지지율 급변, 중대 발언
@@ -298,7 +267,7 @@ def analyze_sentiment(title: str, content: str, candidate: str, candidate_list: 
     try:
         # 최신 고성능/빠른 응답 모델인 gemini-2.5-flash 사용
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model=GEMINI_MODEL,
             contents=prompt,
         )
         text = response.text.strip()
@@ -637,14 +606,6 @@ def chatbot_query(
         }
     # 💡 [핵심 해결] API Rate Limit 방지를 위해 최신 기사 10건으로 제한!
     pre_filtered = pre_filtered[:5]
-
-    events = analyze_batch(
-        news_list            = pre_filtered,
-        candidate            = candidate,
-        candidate_list       = candidate_list,
-        importance_threshold = importance_threshold,
-        delay_seconds        = delay_seconds,
-    )
 
     events = analyze_batch(
         news_list            = pre_filtered,

@@ -19,7 +19,9 @@ trafilatura
 apscheduler
  
 # ── AI
-google-generativeai
+google-genai
+pandas
+plotly
  
 # ── 유틸
 python-dotenv

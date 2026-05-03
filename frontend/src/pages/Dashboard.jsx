@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import KoreanMap from '../components/KoreanMap';
-import { getNews, getDashboardSummary } from '../api/index';
+import { getNews, getDashboardSummary, getMarkets, getCandidateStats } from '../api/index';
 
-const ALL_REGIONS = ['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+const ALL_REGIONS   = ['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+const POLY_REGIONS  = ['서울','부산','경기','충북','충남','강원','전남광주','대전','대구'];
+const REGION_TITLE  = {
+  '서울': '서울시장', '부산': '부산시장', '경기': '경기도지사',
+  '충북': '충북도지사', '충남': '충남도지사', '강원': '강원도지사',
+  '전남광주': '전남·광주도지사', '대전': '대전시장', '대구': '대구시장',
+};
 
 // ✅ [추가] DB에 아직 등록되지 않은 유력 후보들의 정당 매핑 (PolyMarketPage와 동일)
 const CANDIDATE_PARTY_MAP = {
@@ -100,52 +106,57 @@ export default function Dashboard({ isLive }) {
       .finally(() => setNewsLoading(false));
   }, []);
 
+  // winStats: 민주/국힘 우세 지역 수 계산
   useEffect(() => {
-    setPolyLoading(true);
     getDashboardSummary()
       .then(data => {
-        // ✅ [수정] 폴리마켓 데이터로 정당별 예상 우세 지역 계산 (매핑 적용)
-        let blue = 0;
-        let red = 0;
+        let blue = 0, red = 0;
         data.forEach(d => {
-           // DB에서 온 정당 정보가 없으면 하드코딩 매핑에서 가져옴!
-           const party = d.top_party || CANDIDATE_PARTY_MAP[d.top_candidate_ko] || CANDIDATE_PARTY_MAP[d.top_candidate];
-           
-           if (party === '더불어민주당') blue++;
-           if (party === '국민의힘') red++;
+          const party = d.top_party || CANDIDATE_PARTY_MAP[d.top_candidate_ko] || CANDIDATE_PARTY_MAP[d.top_candidate];
+          if (party === '더불어민주당') blue++;
+          if (party === '국민의힘') red++;
         });
         setWinStats({ blue, red });
+      })
+      .catch(() => {});
+  }, []);
 
-        const sorted = [...data]
-          .sort((a, b) => b.probability_pct - a.probability_pct)
+  // 배팅액 TOP5: 9개 지역 병렬 호출 → volume_24h 기준 정렬
+  useEffect(() => {
+    setPolyLoading(true);
+    Promise.all(POLY_REGIONS.map(r => getMarkets(r)))
+      .then(results => {
+        const markets = results
+          .map((candidates, i) => {
+            if (!candidates || candidates.length === 0) return null;
+            const sorted = [...candidates].sort((a, b) => b.probability_pct - a.probability_pct);
+            return {
+              region: POLY_REGIONS[i],
+              title:  REGION_TITLE[POLY_REGIONS[i]],
+              first:  sorted[0] ?? null,
+              second: sorted[1] ?? null,
+              volume: sorted[0]?.volume_24h ?? 0,
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.volume - a.volume)
           .slice(0, 5);
-        setPolymarket(sorted);
+        setPolymarket(markets);
       })
       .catch(() => setPolymarket([]))
       .finally(() => setPolyLoading(false));
   }, []);
 
   useEffect(() => {
-    Promise.all(ALL_REGIONS.map(r =>
-      fetch(`/api/candidates/${encodeURIComponent(r)}?sg_type_label=광역단체장`).then(res => res.json())
-    ))
-    .then(results => {
-      const all = results.flat();
-      let totalAge = 0;
-      let validAge = 0;
-      let femaleCount = 0;
-      all.forEach(c => {
-        if (c.gender === '여') femaleCount++;
-        const age = parseInt(c.age);
-        if (!isNaN(age)) { totalAge += age; validAge++; }
-      });
-      setCandStats({
-        total: all.length,
-        femalePct: all.length > 0 ? Math.round((femaleCount / all.length) * 100) : 0,
-        avgAge: validAge > 0 ? (totalAge / validAge).toFixed(1) : 0
-      });
-    })
-    .catch(err => console.error(err));
+    getCandidateStats()
+      .then(data => {
+        setCandStats({
+          total:     data.total,
+          femalePct: data.female_pct,
+          avgAge:    data.avg_age,
+        });
+      })
+      .catch(err => console.error(err));
   }, []);
 
   function timeAgo(pubDate) {
@@ -217,10 +228,13 @@ export default function Dashboard({ isLive }) {
               ))
             )}
           </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: '#BBB', lineHeight: 1.6 }}>
+            전체 지역 통합 · 네이버 뉴스 API 수집 · 최신 수집분 중 무작위 5건 표시 · 2시간마다 업데이트
+          </div>
         </div>
 
         <div>
-          <div className="section-label"><span className="section-number">4</span>Polymarket 당선 확률 Top 5</div>
+          <div className="section-label"><span className="section-number">4</span>PolyMarket 배팅액 TOP 5</div>
           <div className="card">
             {polyLoading ? (
               <div style={{ textAlign: 'center', color: '#AAA', padding: 24, fontSize: 13 }}>데이터 불러오는 중...</div>
@@ -230,27 +244,27 @@ export default function Dashboard({ isLive }) {
               polymarket.map((p, i) => (
                 <div className="poly-item" key={i}>
                   <div style={{ flex: 1 }}>
-                    <div className="poly-title">{p.region} {p.top_candidate_ko}</div>
-                    <div className="poly-volume">
-                      {p.top_party && <span style={{ fontSize: 11, color: '#888' }}>{p.top_party}</span>}
+                    <div className="poly-title">{p.title}</div>
+                    <div style={{ fontSize: 12, color: '#444', marginTop: 3 }}>
+                      <span style={{ fontWeight: 700, color: '#0D1B3E' }}>{p.first?.candidate_ko}</span>
+                      <span style={{ fontWeight: 700, color: '#1A9C4E', marginLeft: 4 }}>{p.first?.probability_pct}%</span>
+                      {p.second && (
+                        <>
+                          <span style={{ color: '#DDD', margin: '0 6px' }}>·</span>
+                          <span style={{ color: '#666' }}>{p.second?.candidate_ko}</span>
+                          <span style={{ color: '#AAA', marginLeft: 4 }}>{p.second?.probability_pct}%</span>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                    <div className={`poly-pct ${p.probability_pct >= 60 ? 'high' : p.probability_pct >= 40 ? 'mid' : 'low'}`}>
-                      {p.probability_pct}%
-                    </div>
-                    {p.price_change_1d != null && (
-                      <div className={`poly-change ${p.price_change_1d > 0 ? 'up' : p.price_change_1d < 0 ? 'down' : 'flat'}`}>
-                        {p.price_change_1d > 0 ? '▲' : p.price_change_1d < 0 ? '▼' : '—'}{' '}
-                        {p.price_change_1d !== 0 ? `${Math.abs(p.price_change_1d * 100).toFixed(1)}%` : '변동없음'}
-                      </div>
-                    )}
+                  <div style={{ fontSize: 12, color: '#AAA', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    ${p.volume >= 1000 ? `${(p.volume / 1000).toFixed(0)}K` : p.volume.toFixed(0)}
                   </div>
                 </div>
               ))
             )}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #F0F2F5', fontSize: 11, color: '#AAA', textAlign: 'right' }}>
-              Polymarket.com 기반 · 투자 권유 아님
+              Polymarket.com 기반 · 24시간 배팅액 기준 · 투자 권유 아님
             </div>
           </div>
         </div>

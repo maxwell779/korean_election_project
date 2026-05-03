@@ -4,10 +4,9 @@ import ElectionSummary from './pages/ElectionSummary';
 import RegionDetail from './pages/RegionDetail';
 import CandidatePanel from './components/CandidatePanel';
 import PolyMarketPage from './pages/PolyMarketPage';
-import AISummary from './components/AISummary';
 import { ELECTION_DATE } from './data/mock';
 import NewsPanel from './components/NewsPanel';
-import AIAnalyzer from './components/AIAnalyzer'; // 👈 기존 AISummary 대신 임포트
+import AIAnalyzer from './components/AIAnalyzer';
 
 function Countdown() {
   const [t, setT] = useState({});

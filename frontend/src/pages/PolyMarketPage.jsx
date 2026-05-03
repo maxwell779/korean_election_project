@@ -10,6 +10,15 @@ const PARTY_COLOR = {
   '기타':         '#888',
 };
 
+// 지방선거 전체 정당 예측 마켓 매핑
+const PARTY_MARKET_INFO = {
+  'Democratic Party of Korea (DP)':  { name: '더불어민주당', color: '#1A5DC8' },
+  'People Power Party (PPP)':        { name: '국민의힘',     color: '#E03030' },
+  'Progressive Party (PP)':          { name: '진보당',       color: '#C01060' },
+  'Reform Party (RP)':               { name: '개혁신당',     color: '#D06010' },
+  'Rebuilding Korea Party (RKP)':    { name: '조국혁신당',   color: '#1A8C60' },
+};
+
 // 후보명 매핑 (영문 -> 한글 및 정당 추정)
 const CANDIDATE_INFO = {
   'Chong Won-oh': { name: '정원오', party: '더불어민주당' },
@@ -47,12 +56,21 @@ function getCandidateName(candidateEn) {
 }
 
 export default function PolyMarketPage() {
-  const [regionData, setRegionData] = useState({});
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
+  const [regionData,   setRegionData]   = useState({});
+  const [partyMarket,  setPartyMarket]  = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
   const [expandedRegion, setExpandedRegion] = useState(null);
 
-  // 데이터 로드
+  // 지방선거 전체 정당 예측 마켓 로드
+  useEffect(() => {
+    fetch('/api/markets/%EC%A7%80%EB%B0%A9%EC%84%A0%EA%B1%B0')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setPartyMarket([...data].sort((a, b) => b.probability - a.probability)))
+      .catch(() => setPartyMarket([]));
+  }, []);
+
+  // 지역별 후보 데이터 로드
   useEffect(() => {
     setLoading(true);
     Promise.all(
@@ -107,15 +125,10 @@ export default function PolyMarketPage() {
       else if (topParty === '국민의힘') redWins++;
       else otherWins++;
 
-      // 경합 지역 계산 (1, 2위 격차가 15%p 미만인 경우)
-      if (top2 && (top1.probability_pct - top2.probability_pct < 15)) {
+      // 2위가 있는 지역은 모두 수집 → 격차가 작은 순으로 Top 3 표시
+      if (top2) {
         const gap = top1.probability_pct - top2.probability_pct;
-        battlegrounds.push({
-          region,
-          gap,
-          top1,
-          top2
-        });
+        battlegrounds.push({ region, gap, top1, top2 });
       }
     });
 
@@ -147,7 +160,7 @@ export default function PolyMarketPage() {
         </div>
       </div>
       
-       {/* 상단 요약 카드 추가 */}
+      {/* 상단 요약 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 28 }}>
         {[
           { l: '전체 후보 수',    v: analysis.totalCandidates, unit: '명',  c: '#0D1B3E' },
@@ -164,26 +177,66 @@ export default function PolyMarketPage() {
         ))}
       </div>
 
+      {/* 0. 정당별 승리 예측 (지방선거 전체 배팅) */}
+      {partyMarket.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#0D1B3E', marginBottom: 4 }}>
+            🗳️ 정당별 승리 예측
+          </div>
+          <div style={{ fontSize: 11, color: '#AAA', marginBottom: 16 }}>
+            PolyMarket · 전체 지방선거에서 어느 정당이 승리할 것인가
+          </div>
+          {partyMarket.map((m, i) => {
+            const info = PARTY_MARKET_INFO[m.candidate] || { name: m.candidate, color: '#888' };
+            const vol    = m.volume_24h ?? 0;
+            const volStr = vol >= 1000 ? `$${(vol / 1000).toFixed(1)}K` : `$${vol.toFixed(0)}`;
+            const pct    = m.probability_pct ?? m.probability * 100;
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12,
+                marginBottom: i < partyMarket.length - 1 ? 11 : 0 }}>
+                <div style={{ width: 3, height: 32, borderRadius: 2, background: info.color, flexShrink: 0 }} />
+                <div style={{ width: 110, fontSize: 13, fontWeight: 600, color: '#222', flexShrink: 0 }}>
+                  {info.name}
+                </div>
+                <div style={{ flex: 1, height: 10, background: '#F0F2F5', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: info.color,
+                    borderRadius: 5, transition: 'width 0.6s ease', minWidth: pct > 0 ? 3 : 0 }} />
+                </div>
+                <div style={{ width: 58, textAlign: 'right', fontSize: 16, fontWeight: 800,
+                  color: info.color, flexShrink: 0 }}>
+                  {pct.toFixed(1)}%
+                </div>
+                <div style={{ width: 60, textAlign: 'right', fontSize: 11, color: '#AAA', flexShrink: 0 }}>
+                  {volStr}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* 1. 종합 판세 (예상 의석) */}
       <div className="card" style={{ marginBottom: 20, background: '#F7F9FC', border: '1px solid #E5E8EC' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#0D1B3E', marginBottom: 16 }}>🏆 정당별 예상 승리 지역 (총 9곳)</div>
-        <div style={{ display: 'flex', gap: 16, height: 100 }}>
-          {/* 민주당 */}
-          <div style={{ flex: analysis.blueWins || 1, background: '#EBF0FA', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px solid #1A5DC8' }}>
-            <div style={{ fontSize: 13, color: '#1A5DC8', fontWeight: 600 }}>더불어민주당 우세</div>
-            <div style={{ fontSize: 42, fontWeight: 900, color: '#1A5DC8', lineHeight: 1 }}>{analysis.blueWins}</div>
-          </div>
-          {/* 국민의힘 */}
-          <div style={{ flex: analysis.redWins || 1, background: '#FEF0F0', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px solid #E03030' }}>
-            <div style={{ fontSize: 13, color: '#E03030', fontWeight: 600 }}>국민의힘 우세</div>
-            <div style={{ fontSize: 42, fontWeight: 900, color: '#E03030', lineHeight: 1 }}>{analysis.redWins}</div>
-          </div>
+        <div style={{ display: 'flex', gap: 12, height: 100 }}>
+          {[
+            { label: '더불어민주당 우세', count: analysis.blueWins, bg: '#EBF0FA', border: '#1A5DC8', color: '#1A5DC8' },
+            { label: '국민의힘 우세',     count: analysis.redWins,  bg: '#FEF0F0', border: '#E03030', color: '#E03030' },
+            { label: '그외 우세',         count: analysis.otherWins,bg: '#F5F0FF', border: '#7040C0', color: '#7040C0' },
+          ].map(({ label, count, bg, border, color }) => (
+            <div key={label} style={{ flex: count || 0.6, background: bg, borderRadius: 12,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              border: `2px solid ${border}`, opacity: count === 0 ? 0.45 : 1 }}>
+              <div style={{ fontSize: 12, color, fontWeight: 600 }}>{label}</div>
+              <div style={{ fontSize: 42, fontWeight: 900, color, lineHeight: 1 }}>{count}</div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* 2. 최대 경합 지역 */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#0D1B3E', marginBottom: 12 }}>🔥 초박빙 경합 지역 Top 3</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#0D1B3E', marginBottom: 12 }}>🔥 상대적 경합 지역 Top 3 (1·2위 격차 기준)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
           {analysis.battlegrounds.map((b, i) => (
             <div key={i} className="card" style={{ padding: '16px', position: 'relative', overflow: 'hidden' }}>
@@ -220,6 +273,7 @@ export default function PolyMarketPage() {
       </div>
 
       {/* 3. 지역별 전체 후보 (아코디언 형태) */}
+
       <div style={{ fontSize: 14, fontWeight: 700, color: '#0D1B3E', marginBottom: 12 }}>📍 지역별 후보 상세 예측</div>
       {SUPPORTED_REGIONS.map(region => {
         const markets = regionData[region] || [];
@@ -273,6 +327,7 @@ export default function PolyMarketPage() {
           </div>
         );
       })}
+
     </div>
   );
 }

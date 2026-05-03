@@ -11,6 +11,9 @@ export const getDashboardSummary = () => get('/dashboard/summary');
 export const getRegionData       = (region) => get(`/regions/${encodeURIComponent(region)}`);
 export const getCandidates       = (region) => get(`/candidates/${encodeURIComponent(region)}`);
 
+export const getMarkets          = (region) => get(`/markets/${encodeURIComponent(region)}`);
+export const getCandidateStats   = ()       => get('/candidates/stats');
+
 // 수정: 특정 후보자(candidate)가 있으면 파라미터로 넘김
 export const getMarketHistory    = (region, candidate = '') => {
   const query = candidate ? `?candidate=${encodeURIComponent(candidate)}` : '';

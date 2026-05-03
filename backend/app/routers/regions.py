@@ -14,23 +14,43 @@ from app.schemas import (
 router = APIRouter()
  
 SUPPORTED_REGIONS = [
-    "서울", "부산", "경기", "충북", "충남",
-    "강원", "전남광주", "대전", "대구",
+    "서울", "부산", "대구", "인천", "대전",
+    "울산", "세종", "경기", "강원", "충북",
+    "충남", "전남광주",
 ]
- 
+
 REGION_TO_SD = {
     "서울":     "서울특별시",
     "부산":     "부산광역시",
+    "대구":     "대구광역시",
+    "인천":     "인천광역시",
+    "대전":     "대전광역시",
+    "울산":     "울산광역시",
+    "세종":     "세종특별자치시",
     "경기":     "경기도",
+    "강원":     "강원특별자치도",
     "충북":     "충청북도",
     "충남":     "충청남도",
-    "강원":     "강원특별자치도",
-    "전남광주":  "전라남도",
-    "대전":     "대전광역시",
-    "대구":     "대구광역시",
+    "전남광주": "전라남도",
 }
- 
- 
+
+# Candidate 테이블 조회 실패 시 사용하는 정당 폴백
+CANDIDATE_PARTY_FALLBACK = {
+    "정원오": "더불어민주당",
+    "전재수": "더불어민주당",
+    "추경호": "국민의힘",
+    "박찬대": "더불어민주당",
+    "허태정": "더불어민주당",
+    "김상욱": "더불어민주당",
+    "조상호": "더불어민주당",
+    "우상호": "더불어민주당",
+    "추미애": "더불어민주당",
+    "신용한": "국민의힘",
+    "박수현": "더불어민주당",
+    "민형배": "더불어민주당",
+}
+
+
 def _get_top_market(region: str, db: Session):
     """해당 지역 확률 1위 후보 MarketPrice row 반환"""
     subq = (
@@ -77,17 +97,19 @@ def get_regions(db: Session = Depends(get_db)):
             .filter(
                 Candidate.sd_name       == sd_name,
                 Candidate.sg_type_label == "광역단체장",
-                Candidate.name          == candidate_ko,   # [수정] 한글명으로 매칭
+                Candidate.name          == candidate_ko,
             )
             .first()
         )
- 
+
+        top_party = (cdd.party if cdd else None) or CANDIDATE_PARTY_FALLBACK.get(candidate_ko)
+
         result.append(
             RegionSummaryOut(
                 region           = region,
-                top_candidate    = top.candidate,          # 영문 (기존 유지)
-                top_candidate_ko = candidate_ko,           # [수정] 한글명 추가
-                top_party        = cdd.party if cdd else None,
+                top_candidate    = top.candidate,
+                top_candidate_ko = candidate_ko,
+                top_party        = top_party,
                 probability      = top.probability,
                 probability_pct  = round(top.probability * 100, 2),
                 price_change_1d  = top.price_change_1d,
