@@ -29,6 +29,21 @@
 
 ---
 
+## 🖼️ 화면 & 시스템 구조
+
+![대시보드](assets/dashboard.png)
+
+<p>
+<img src="assets/architecture.png" width="46%"/> <img src="assets/db_design.png" width="46%"/>
+</p>
+<p>
+<img src="assets/fastapi_layers.png" width="46%"/> <img src="assets/data_integrity.png" width="46%"/>
+</p>
+
+> 대시보드(지도·확률 추이) · 시스템 아키텍처 · DB 설계(3테이블·인덱스 7개) · FastAPI 계층(Router·Service·Schema) · 영문↔한글 후보명 정합
+
+---
+
 ## 🛠️ 기술 스택
 
 ### Backend
@@ -207,10 +222,12 @@ npm start
 
 | 파트 | 담당 | 핵심 작업 |
 |------|------|-----------|
-| A | - | 선관위·폴리마켓·뉴스 수집, APScheduler |
-| B | - | FastAPI, MySQL, AWS 배포 |
-| C | - | Claude API 감성분석, 3줄 요약 |
-| D | - | React 대시보드, 지도, 차트 |
+| A | **권효중(본인)** | 선관위·폴리마켓·뉴스 수집 collectors, APScheduler |
+| B | **권효중(본인)** | FastAPI 6라우터·MySQL 3테이블 설계, Docker |
+| C | 팀원 | Claude/Gemini 감성분석, 3줄 요약 |
+| D | 팀원 | React 대시보드, 지도, 차트 |
+
+> **본인(권효중) = 백엔드 전반** — 데이터 수집 파이프라인 · MySQL DB 설계(인덱스 7개) · FastAPI API(6라우터/12엔드포인트) · 자동 수집 스케줄러. 핵심 난제였던 **영문(폴리마켓)↔한글(선관위) 후보명 정합(매핑 155개)** 과 **동명이인 복합키 처리(9,343→8,577명)** 를 해결.
 
 ---
 
