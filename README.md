@@ -29,10 +29,15 @@
 
 ---
 
-## 🖼️ 화면 & 시스템 구조
+## 🖼️ 화면 (실제 구동 캡처)
 
-![대시보드](assets/dashboard.png)
+**메인 대시보드** — 전국 지도·시도별 광역단체장 현황·뉴스 TOP5·PolyMarket 배팅액
+![메인 대시보드](assets/app_main.png)
 
+**PolyMarket 판세 예측** — 정당별 승리 확률·경합 지역·지역별 후보 상세
+![PolyMarket 판세](assets/app_polymarket.png)
+
+### 시스템 구조
 <p>
 <img src="assets/architecture.png" width="46%"/> <img src="assets/db_design.png" width="46%"/>
 </p>
@@ -40,7 +45,7 @@
 <img src="assets/fastapi_layers.png" width="46%"/> <img src="assets/data_integrity.png" width="46%"/>
 </p>
 
-> 대시보드(지도·확률 추이) · 시스템 아키텍처 · DB 설계(3테이블·인덱스 7개) · FastAPI 계층(Router·Service·Schema) · 영문↔한글 후보명 정합
+> 시스템 아키텍처 · DB 설계(3테이블·인덱스 7개) · FastAPI 계층(Router·Service·Schema) · 영문↔한글 후보명 정합
 
 ---
 
